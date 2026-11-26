@@ -1,0 +1,2687 @@
+<!DOCTYPE html>
+<html lang="en" class="antialiased">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TaskFlow — Local Todo & Time Analytics</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] }
+        }
+      }
+    };
+  </script>
+
+  <!-- Lucide Icons & Chart.js -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.35); border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.6); }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in { animation: fadeIn 0.2s ease-out forwards; }
+
+    @keyframes pulseDot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.45; transform: scale(0.85); }
+    }
+    .timer-pulse { animation: pulseDot 1.2s infinite ease-in-out; }
+
+    @keyframes flameGlow {
+      0%, 100% { filter: drop-shadow(0 0 8px rgba(249, 115, 22, 0.55)); transform: scale(1); }
+      50% { filter: drop-shadow(0 0 18px rgba(239, 68, 68, 0.85)); transform: scale(1.06); }
+    }
+    .flame-glow { animation: flameGlow 2s infinite ease-in-out; }
+
+    .subtask-highlight {
+      box-shadow: 0 0 0 2px #ef4444;
+      background-color: rgba(239, 68, 68, 0.06);
+    }
+  </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 h-screen overflow-hidden flex flex-col">
+
+  <!-- Mobile Sidebar Backdrop -->
+  <div id="mobile-sidebar-backdrop" onclick="toggleMobileSidebar(false)" class="fixed inset-0 bg-slate-900/50 z-30 hidden lg:hidden"></div>
+
+  <div class="flex flex-1 min-h-0 overflow-hidden">
+    <!-- =========================================================
+         SIDEBAR
+    ========================================================== -->
+    <aside id="sidebar" class="fixed lg:static inset-y-0 left-0 z-40 w-72 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-out shrink-0">
+      <!-- Brand Header -->
+      <div class="h-16 px-4 flex items-center justify-between border-b border-slate-100 dark:border-slate-800 shrink-0">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center text-white shadow-sm shadow-red-500/30">
+            <i data-lucide="check-circle-2" class="w-4.5 h-4.5"></i>
+          </div>
+          <div>
+            <h1 class="font-bold text-base tracking-tight leading-none">TaskFlow</h1>
+            <p class="text-[11px] text-slate-400 font-medium mt-0.5">Local Workspace</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-1">
+          <button onclick="toggleTheme()" title="Toggle Light/Dark Mode" class="p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+            <i id="theme-icon" data-lucide="moon" class="w-4 h-4"></i>
+          </button>
+          <button onclick="toggleMobileSidebar(false)" class="p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Add Button -->
+      <div class="p-3 shrink-0">
+        <button onclick="openQuickAddModal()" class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 active:scale-[0.99] text-white font-semibold text-sm shadow-sm shadow-red-600/20 transition-all">
+          <i data-lucide="plus" class="w-4 h-4"></i>
+          <span>Add Task</span>
+        </button>
+      </div>
+
+      <!-- Scrollable Navigation -->
+      <div class="flex-1 overflow-y-auto px-3 pb-4 space-y-5">
+        <!-- Core Views -->
+        <nav class="space-y-0.5" id="sidebar-main-nav"></nav>
+
+        <!-- Projects -->
+        <div>
+          <div class="flex items-center justify-between px-2 mb-1.5">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Projects</span>
+            <button onclick="openProjectModal()" title="Add Project" class="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+          <div id="sidebar-projects" class="space-y-0.5"></div>
+        </div>
+
+        <!-- Tags -->
+        <div>
+          <div class="flex items-center justify-between px-2 mb-1.5">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Tags</span>
+            <button onclick="openTagModal()" title="Add Tag" class="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+          <div id="sidebar-tags" class="flex flex-wrap gap-1.5 px-1"></div>
+        </div>
+      </div>
+
+      <!-- Sidebar Footer Controls -->
+      <div class="p-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/80 shrink-0">
+        <div class="grid grid-cols-4 gap-1">
+          <button onclick="openFileSyncModal()" title="Local File Auto-Save" class="flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-lg text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors">
+            <i data-lucide="hard-drive" class="w-3.5 h-3.5"></i>
+            <span>File Sync</span>
+          </button>
+          <button onclick="exportData()" title="Export JSON Backup" class="flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-lg text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            <span>Export</span>
+          </button>
+          <button onclick="triggerImport()" title="Import JSON Backup" class="flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-lg text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors">
+            <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+            <span>Import</span>
+          </button>
+          <button onclick="confirmClearAllData()" title="Clear All Data" class="flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-lg text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            <span>Clear</span>
+          </button>
+        </div>
+        <input type="file" id="import-file-input" accept=".json" class="hidden" onchange="handleImportFile(event)" />
+      </div>
+    </aside>
+
+    <!-- =========================================================
+         MAIN WORKSPACE
+    ========================================================== -->
+    <main class="flex-1 flex flex-col min-w-0 bg-slate-50 dark:bg-slate-950 overflow-hidden">
+      <!-- Top Header -->
+      <header class="h-16 px-4 sm:px-6 lg:px-8 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0">
+        <div class="flex items-center gap-3 min-w-0">
+          <button onclick="toggleMobileSidebar(true)" class="p-2 -ml-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden">
+            <i data-lucide="menu" class="w-5 h-5"></i>
+          </button>
+          <div class="min-w-0">
+            <h2 id="header-title" class="text-lg sm:text-xl font-bold tracking-tight truncate">Today</h2>
+            <p id="header-subtitle" class="text-xs text-slate-500 dark:text-slate-400 truncate"></p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 shrink-0">
+          <!-- Local File Auto-Save Status Pill -->
+          <button id="file-sync-pill" onclick="openFileSyncModal()" title="Manage Direct Local File Auto-Save" class="inline-flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium border transition-all bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800/70 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60">
+            <span id="file-sync-dot" class="w-2 h-2 rounded-full bg-amber-500 shrink-0"></span>
+            <span id="file-sync-text" class="max-w-[130px] sm:max-w-[220px] truncate">Local File Not Linked</span>
+          </button>
+
+          <!-- Running Timer Pill -->
+          <div id="global-timer-pill" class="hidden items-center gap-2 px-3 py-1.5 rounded-full bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800/80 text-rose-700 dark:text-rose-300 text-xs font-medium">
+            <span class="w-2 h-2 rounded-full bg-rose-500 timer-pulse"></span>
+            <span id="global-timer-label" class="max-w-[110px] truncate hidden sm:inline"></span>
+            <span id="global-timer-clock" class="font-mono font-semibold">00:00</span>
+            <button onclick="stopActiveTimer()" title="Stop Timer" class="ml-1 p-0.5 rounded-full hover:bg-rose-200/70 dark:hover:bg-rose-900">
+              <i data-lucide="square" class="w-3 h-3 fill-current"></i>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Startup / Unlinked Local File Banner -->
+      <div id="file-sync-banner" class="hidden shrink-0 px-4 sm:px-6 lg:px-8 pt-3"></div>
+
+      <!-- Main View Area -->
+      <div id="workspace-content" class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8"></div>
+    </main>
+  </div>
+
+  <!-- =========================================================
+       TASK DETAIL SLIDE-OVER DRAWER
+  ========================================================== -->
+  <div id="task-detail-backdrop" onclick="closeTaskDetail()" class="fixed inset-0 bg-slate-900/40 backdrop-blur-[1px] z-40 hidden"></div>
+  <aside id="task-detail-drawer" class="fixed inset-y-0 right-0 z-50 w-full max-w-lg bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl transform translate-x-full transition-transform duration-200 ease-out flex flex-col">
+    <div id="task-detail-content" class="flex-1 flex flex-col min-h-0"></div>
+  </aside>
+
+  <!-- =========================================================
+       QUICK ADD TASK MODAL
+  ========================================================== -->
+  <div id="quick-add-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in">
+      <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <h3 class="font-semibold text-base">New Task</h3>
+        <button onclick="closeQuickAddModal()" class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <form id="quick-add-form" onsubmit="submitQuickAdd(event)" class="p-5 space-y-4">
+        <div>
+          <input id="qa-title" type="text" required placeholder="What needs to be done?" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-red-500/40 focus:border-red-500" />
+        </div>
+        <div>
+          <textarea id="qa-desc" rows="2" placeholder="Description (optional)" class="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/40"></textarea>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Project</label>
+            <select id="qa-project" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium"></select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Due Date</label>
+            <input id="qa-due" type="date" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium" />
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Priority</label>
+            <select id="qa-priority" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium">
+              <option value="1">P1 — Urgent</option>
+              <option value="2">P2 — High</option>
+              <option value="3">P3 — Medium</option>
+              <option value="4" selected>P4 — Normal</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Tags</label>
+          <div id="qa-tags-picker" class="flex flex-wrap gap-1.5"></div>
+        </div>
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <button type="button" onclick="closeQuickAddModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">Cancel</button>
+          <button type="submit" class="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold shadow-sm">Create Task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       PROJECT MODAL
+  ========================================================== -->
+  <div id="project-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-fade-in">
+      <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <h3 class="font-semibold text-base">New Project</h3>
+        <button onclick="closeProjectModal()" class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <form onsubmit="submitProject(event)" class="p-5 space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 mb-1">Project Name</label>
+          <input id="proj-name" type="text" required placeholder="e.g. Work, Health, Side Project" class="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/40" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 mb-1.5">Color</label>
+          <div id="proj-color-picker" class="flex flex-wrap gap-2"></div>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeProjectModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">Cancel</button>
+          <button type="submit" class="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold">Add Project</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       TAG MODAL
+  ========================================================== -->
+  <div id="tag-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-fade-in">
+      <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <h3 class="font-semibold text-base">New Tag</h3>
+        <button onclick="closeTagModal()" class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <form onsubmit="submitTag(event)" class="p-5 space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 mb-1">Tag Name</label>
+          <input id="tag-name" type="text" required placeholder="e.g. Deep Work, Urgent, Calls" class="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/40" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 mb-1.5">Color</label>
+          <div id="tag-color-picker" class="flex flex-wrap gap-2"></div>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeTagModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">Cancel</button>
+          <button type="submit" class="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold">Add Tag</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       CONFIRMATION MODAL
+  ========================================================== -->
+  <div id="confirm-modal" class="fixed inset-0 z-[75] hidden items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-fade-in">
+      <div class="p-5">
+        <h3 id="confirm-title" class="font-bold text-base">Confirm Action</h3>
+        <p id="confirm-message" class="text-sm text-slate-500 dark:text-slate-400 mt-1.5"></p>
+        <div class="flex justify-end gap-2 mt-5">
+          <button onclick="closeConfirmModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">Cancel</button>
+          <button id="confirm-ok-btn" onclick="executeConfirmCallback()" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       RECURRING SUBTASK DELETE MODAL
+  ========================================================== -->
+  <div id="recurring-delete-modal" class="fixed inset-0 z-[75] hidden items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-fade-in">
+      <div class="p-5">
+        <h3 class="font-bold text-base">Delete Recurring Subtask</h3>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Choose how you want to handle this recurring subtask:</p>
+        <div class="space-y-2 mt-4">
+          <button onclick="handleRecurringDeleteChoice('skip')" class="w-full py-2.5 px-4 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-xs font-semibold hover:bg-amber-100 dark:hover:bg-amber-900/60 transition-colors">
+            Skip this occurrence (schedule next)
+          </button>
+          <button onclick="handleRecurringDeleteChoice('stop')" class="w-full py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition-colors">
+            Delete & stop recurring
+          </button>
+          <button onclick="closeRecurringDeleteModal()" class="w-full py-2 px-4 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       ALL-TASKS-DONE CELEBRATION MODAL
+  ========================================================== -->
+  <div id="celebration-modal" class="fixed inset-0 z-[80] hidden items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+    <canvas id="confetti-canvas" class="fixed inset-0 w-full h-full pointer-events-none"></canvas>
+    <div class="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in text-center">
+      <div class="bg-gradient-to-br from-amber-500 via-orange-500 to-rose-600 p-7 text-white relative">
+        <div class="w-16 h-16 mx-auto rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shadow-lg flame-glow">
+          <i data-lucide="trophy" class="w-9 h-9 text-white"></i>
+        </div>
+        <h3 class="text-2xl font-extrabold mt-4 tracking-tight">Perfect Day Achieved!</h3>
+        <p class="text-sm text-white/90 mt-1">Every task and subtask due today is complete.</p>
+      </div>
+      <div class="p-6">
+        <div class="grid grid-cols-3 gap-2.5">
+          <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700/60">
+            <p class="text-[11px] font-semibold text-slate-400 uppercase">Streak</p>
+            <p id="celeb-streak" class="text-xl font-extrabold text-orange-500 mt-0.5">1d 🔥</p>
+          </div>
+          <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700/60">
+            <p class="text-[11px] font-semibold text-slate-400 uppercase">Completed</p>
+            <p id="celeb-count" class="text-xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5">0</p>
+          </div>
+          <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700/60">
+            <p class="text-[11px] font-semibold text-slate-400 uppercase">Focused</p>
+            <p id="celeb-time" class="text-xl font-extrabold text-blue-600 dark:text-blue-400 mt-0.5">0m</p>
+          </div>
+        </div>
+        <p id="celeb-quote" class="text-sm text-slate-600 dark:text-slate-300 mt-5 leading-relaxed font-medium"></p>
+        <div class="mt-6 flex flex-col sm:flex-row gap-2.5">
+          <button onclick="closeCelebrationModal(); setView('streaks');" class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 text-sm font-semibold transition-colors">
+            <i data-lucide="flame" class="w-4 h-4 text-orange-500"></i>
+            <span>View Streak Board</span>
+          </button>
+          <button onclick="closeCelebrationModal()" class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white text-sm font-semibold shadow-md shadow-rose-600/25 transition-all">
+            <span>Awesome, Keep Going!</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       LOCAL FILE AUTO-SAVE MODAL
+  ========================================================== -->
+  <div id="file-sync-modal" class="fixed inset-0 z-[70] hidden items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
+      <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i data-lucide="hard-drive" class="w-4 h-4 text-red-500"></i>
+          <h3 class="font-semibold text-base">Local File Auto-Save</h3>
+        </div>
+        <button onclick="closeFileSyncModal()" class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <div id="file-sync-modal-body" class="p-5 space-y-4"></div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-[90] flex flex-col gap-2 pointer-events-none"></div>
+
+  <script>
+    /********************************************************************
+     * 1. CONSTANTS & APPLICATION STATE
+     ********************************************************************/
+    const STORAGE_KEY = 'taskflow_clean_v1';
+    const FS_DB_NAME = 'taskflow_fs_db';
+    const FS_STORE_NAME = 'handles';
+    const FS_HANDLE_KEY = 'primaryFileHandle';
+
+    const PALETTE = [
+      '#ef4444', '#f97316', '#f59e0b', '#10b981',
+      '#14b8a6', '#3b82f6', '#6366f1', '#8b5cf6',
+      '#ec4899', '#64748b'
+    ];
+
+    const PRIORITY_META = {
+      1: { label: 'P1', color: '#ef4444', ring: 'border-red-500 text-red-500' },
+      2: { label: 'P2', color: '#f97316', ring: 'border-orange-500 text-orange-500' },
+      3: { label: 'P3', color: '#3b82f6', ring: 'border-blue-500 text-blue-500' },
+      4: { label: 'P4', color: '#94a3b8', ring: 'border-slate-300 dark:border-slate-600 text-slate-400' }
+    };
+
+    const STREAK_MILESTONES = [
+      { days: 1, title: '1-Day Spark', desc: 'Complete every task due in a single day.', icon: 'sparkles', color: '#f59e0b' },
+      { days: 3, title: '3-Day Momentum', desc: 'Three consecutive Perfect Days in a row.', icon: 'zap', color: '#f97316' },
+      { days: 7, title: '7-Day Week Warrior', desc: 'A full unstoppable week of zero leftovers.', icon: 'flame', color: '#ef4444' },
+      { days: 14, title: '14-Day Focus Master', desc: 'Two solid weeks of relentless execution.', icon: 'target', color: '#8b5cf6' },
+      { days: 30, title: '30-Day Unstoppable', desc: 'An entire month of daily mastery.', icon: 'award', color: '#10b981' },
+      { days: 60, title: '60-Day Iron Will', desc: 'Two months of unbroken discipline.', icon: 'shield', color: '#0ea5e9' },
+      { days: 100, title: '100-Day Legend', desc: 'Elite century-club consistency.', icon: 'crown', color: '#eab308' }
+    ];
+
+    function createEmptyState() {
+      return {
+        projects: [{ id: 'inbox', name: 'Inbox', color: '#3b82f6', isSystem: true }],
+        tags: [],
+        tasks: [],
+        streakHistory: {},     // { 'YYYY-MM-DD': { perfect: true, done: N, total: N } }
+        celebratedDates: {},   // { 'YYYY-MM-DD': true }
+        settings: { theme: 'light' }
+      };
+    }
+
+    let appState = createEmptyState();
+
+    let uiState = {
+      view: 'today',         // 'today' | 'upcoming' | 'all' | 'project' | 'tag' | 'calendar' | 'analytics' | 'streaks'
+      selectedProjectId: null,
+      selectedTagId: null,
+      detailTaskId: null,
+      highlightSubtaskId: null,
+      expandedTasks: {},
+      showCompleted: false,
+      calendarDate: new Date(),
+      analyticsRange: 'all', // 'all' | 'month' | 'week'
+      projectChartType: 'doughnut',
+      tagChartType: 'bar',
+      taskChartType: 'bar',
+      taskChartScope: 'rollup', // 'rollup' | 'items' | 'subtasks'
+      taskChartProject: 'all',
+      breakdownSearch: '',
+      breakdownSort: 'time',    // 'time' | 'title' | 'due'
+      breakdownExpanded: {},
+      activeTimer: null,        // { taskId, subtaskId, startedAt }
+      timerIntervalId: null,
+      qaSelectedTags: [],
+      projSelectedColor: PALETTE[5],
+      tagSelectedColor: PALETTE[7],
+      pendingRecurringDelete: null
+    };
+
+    let charts = { project: null, tag: null, task: null };
+    let pendingConfirmCallback = null;
+    let confettiAnimId = null;
+
+    let fsState = {
+      supported: typeof window.showSaveFilePicker === 'function' && typeof window.showOpenFilePicker === 'function',
+      fileHandle: null,
+      rememberedHandle: null,
+      fileName: '',
+      status: 'unlinked', // 'unlinked' | 'reconnect' | 'saving' | 'synced' | 'error'
+      lastSavedTime: '',
+      hasUnsavedChanges: false,
+      bannerDismissed: false,
+      saveTimerId: null
+    };
+
+    /********************************************************************
+     * 2. DATE, FORMAT & UTILITY HELPERS
+     ********************************************************************/
+    function uid(prefix = 'id') {
+      return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+    }
+
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function getLocalDateStr(date = new Date()) {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function parseLocalDate(dateStr) {
+      if (!dateStr) return null;
+      const [y, m, d] = dateStr.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }
+
+    function addDaysStr(dateStr, days) {
+      const dt = parseLocalDate(dateStr);
+      dt.setDate(dt.getDate() + days);
+      return getLocalDateStr(dt);
+    }
+
+    function computeNextRecurringDate(currentDateStr, freq) {
+      const dt = parseLocalDate(currentDateStr);
+      if (!dt) return null;
+      if (freq === 'daily') {
+        dt.setDate(dt.getDate() + 1);
+        return getLocalDateStr(dt);
+      }
+      if (freq === 'weekly') {
+        dt.setDate(dt.getDate() + 7);
+        return getLocalDateStr(dt);
+      }
+      if (freq === 'monthly') {
+        const origDay = dt.getDate();
+        const targetYear = dt.getFullYear();
+        const targetMonth = dt.getMonth() + 1;
+        const maxDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+        return getLocalDateStr(new Date(targetYear, targetMonth, Math.min(origDay, maxDay)));
+      }
+      if (freq === 'yearly') {
+        const origDay = dt.getDate();
+        const targetYear = dt.getFullYear() + 1;
+        const targetMonth = dt.getMonth();
+        const maxDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+        return getLocalDateStr(new Date(targetYear, targetMonth, Math.min(origDay, maxDay)));
+      }
+      return null;
+    }
+
+    function isOverdue(dateStr) {
+      if (!dateStr) return false;
+      return dateStr < getLocalDateStr();
+    }
+
+    function formatHumanDate(dateStr) {
+      if (!dateStr) return '';
+      const today = getLocalDateStr();
+      const tomorrow = addDaysStr(today, 1);
+      const yesterday = addDaysStr(today, -1);
+      if (dateStr === today) return 'Today';
+      if (dateStr === tomorrow) return 'Tomorrow';
+      if (dateStr === yesterday) return 'Yesterday';
+      const dt = parseLocalDate(dateStr);
+      return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: dt.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined });
+    }
+
+    function formatDuration(totalSeconds) {
+      const s = Math.max(0, Math.round(totalSeconds || 0));
+      if (s === 0) return '0m';
+      if (s < 60) return `${s}s`;
+      const hrs = Math.floor(s / 3600);
+      const mins = Math.floor((s % 3600) / 60);
+      if (hrs > 0 && mins > 0) return `${hrs}h ${mins}m`;
+      if (hrs > 0) return `${hrs}h`;
+      return `${mins}m`;
+    }
+
+    function formatClock(totalSeconds) {
+      const s = Math.max(0, Math.floor(totalSeconds || 0));
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = s % 60;
+      if (h > 0) return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+      return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+    }
+
+    function getProjectById(id) {
+      return appState.projects.find(p => p.id === id) || appState.projects[0];
+    }
+
+    function getTagById(id) {
+      return appState.tags.find(t => t.id === id);
+    }
+
+    function getItemSeconds(item, range = 'all') {
+      const logs = item.timeLogs || [];
+      if (range === 'all') {
+        return logs.reduce((sum, l) => sum + (l.seconds || 0), 0);
+      }
+      const todayStr = getLocalDateStr();
+      const cutoff = range === 'week' ? addDaysStr(todayStr, -6) : addDaysStr(todayStr, -29);
+      return logs.filter(l => l.date >= cutoff && l.date <= todayStr).reduce((sum, l) => sum + (l.seconds || 0), 0);
+    }
+
+    function getTaskTotalSeconds(task, range = 'all') {
+      let total = getItemSeconds(task, range);
+      (task.subtasks || []).forEach(st => { total += getItemSeconds(st, range); });
+      return total;
+    }
+
+    /********************************************************************
+     * 3. STORAGE & DIRECT LOCAL FILE AUTO-SAVE (File System API + IDB)
+     ********************************************************************/
+    function normalizeLoadedAppState(parsed) {
+      if (!parsed || !Array.isArray(parsed.projects) || !Array.isArray(parsed.tasks)) {
+        throw new Error('Invalid TaskFlow JSON structure');
+      }
+      if (!parsed.tags) parsed.tags = [];
+      if (!parsed.streakHistory) parsed.streakHistory = {};
+      if (!parsed.celebratedDates) parsed.celebratedDates = {};
+      if (!parsed.settings) parsed.settings = { theme: appState.settings?.theme || 'light' };
+      if (!parsed.projects.some(p => p.id === 'inbox')) {
+        parsed.projects.unshift({ id: 'inbox', name: 'Inbox', color: '#3b82f6', isSystem: true });
+      }
+      return parsed;
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          appState = normalizeLoadedAppState(JSON.parse(raw));
+        } else {
+          appState = createEmptyState();
+        }
+      } catch (e) {
+        console.error('Failed to load state:', e);
+        appState = createEmptyState();
+      }
+    }
+
+    function saveState(immediateDiskFlush = false) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+      } catch (e) {
+        console.error('localStorage save error:', e);
+      }
+
+      if (fsState.fileHandle) {
+        fsState.hasUnsavedChanges = true;
+        fsState.status = 'saving';
+        renderFileSyncUI();
+        scheduleFileAutoSave(immediateDiskFlush);
+      } else {
+        const hasUserContent = appState.tasks.length > 0 || appState.projects.length > 1 || appState.tags.length > 0;
+        if (hasUserContent) {
+          fsState.hasUnsavedChanges = true;
+          renderFileSyncUI();
+        }
+      }
+    }
+
+    function openFsDb() {
+      return new Promise((resolve, reject) => {
+        if (!window.indexedDB) { reject(new Error('IndexedDB unavailable')); return; }
+        const req = indexedDB.open(FS_DB_NAME, 1);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(FS_STORE_NAME)) db.createObjectStore(FS_STORE_NAME);
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function saveHandleToIdb(handle) {
+      try {
+        const db = await openFsDb();
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction(FS_STORE_NAME, 'readwrite');
+          tx.objectStore(FS_STORE_NAME).put(handle, FS_HANDLE_KEY);
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+        });
+      } catch (e) { console.warn('IDB save handle warning:', e); }
+    }
+
+    async function loadHandleFromIdb() {
+      try {
+        const db = await openFsDb();
+        return await new Promise((resolve, reject) => {
+          const tx = db.transaction(FS_STORE_NAME, 'readonly');
+          const req = tx.objectStore(FS_STORE_NAME).get(FS_HANDLE_KEY);
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = () => reject(req.error);
+        });
+      } catch (e) { return null; }
+    }
+
+    async function clearHandleFromIdb() {
+      try {
+        const db = await openFsDb();
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction(FS_STORE_NAME, 'readwrite');
+          tx.objectStore(FS_STORE_NAME).delete(FS_HANDLE_KEY);
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+        });
+      } catch (e) { console.warn('IDB clear handle warning:', e); }
+    }
+
+    function formatClockTimeNow() {
+      return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    }
+
+    function scheduleFileAutoSave(immediate = false) {
+      if (!fsState.fileHandle) return;
+      if (fsState.saveTimerId) { clearTimeout(fsState.saveTimerId); fsState.saveTimerId = null; }
+      if (immediate) {
+        flushStateToDisk();
+      } else {
+        fsState.saveTimerId = setTimeout(() => { fsState.saveTimerId = null; flushStateToDisk(); }, 300);
+      }
+    }
+
+    async function flushStateToDisk() {
+      if (!fsState.fileHandle) return false;
+      try {
+        const writable = await fsState.fileHandle.createWritable();
+        await writable.write(JSON.stringify(appState, null, 2));
+        await writable.close();
+        fsState.status = 'synced';
+        fsState.lastSavedTime = formatClockTimeNow();
+        fsState.hasUnsavedChanges = false;
+        renderFileSyncUI();
+        return true;
+      } catch (e) {
+        console.error('Disk write error:', e);
+        fsState.status = 'error';
+        renderFileSyncUI();
+        showToast('Could not write to linked file. Click File Sync to reconnect.', 'error');
+        return false;
+      }
+    }
+
+    async function linkNewLocalFile() {
+      if (!fsState.supported) {
+        showToast('Direct file auto-save requires Chrome, Edge, or Brave. Use Export Backup instead.', 'info');
+        return;
+      }
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: 'taskflow-data.json',
+          types: [{ description: 'TaskFlow JSON Data', accept: { 'application/json': ['.json'] } }]
+        });
+        fsState.fileHandle = handle;
+        fsState.rememberedHandle = handle;
+        fsState.fileName = handle.name || 'taskflow-data.json';
+        fsState.bannerDismissed = false;
+        await saveHandleToIdb(handle);
+        const ok = await flushStateToDisk();
+        if (ok) {
+          closeFileSyncModal();
+          showToast(`Auto-saving directly to ${fsState.fileName}`);
+        }
+      } catch (e) {
+        if (e && e.name !== 'AbortError') showToast('Could not link save file.', 'error');
+      }
+    }
+
+    async function openExistingLocalFile() {
+      if (!fsState.supported) { triggerImport(); return; }
+      try {
+        const [handle] = await window.showOpenFilePicker({
+          multiple: false,
+          types: [{ description: 'TaskFlow JSON Data', accept: { 'application/json': ['.json'] } }]
+        });
+        const perm = await handle.requestPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') { showToast('Read/write permission is required.', 'error'); return; }
+        await loadStateFromFileHandle(handle);
+        await saveHandleToIdb(handle);
+        closeFileSyncModal();
+        showToast(`Loaded & synced with ${fsState.fileName}`);
+      } catch (e) {
+        if (e && e.name !== 'AbortError') showToast('Could not open that JSON file.', 'error');
+      }
+    }
+
+    async function reconnectRememberedFile() {
+      const handle = fsState.rememberedHandle;
+      if (!handle) { openExistingLocalFile(); return; }
+      try {
+        const perm = await handle.requestPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') { showToast('Permission declined.', 'error'); return; }
+        await loadStateFromFileHandle(handle);
+        closeFileSyncModal();
+        showToast(`Reconnected & loaded ${fsState.fileName}`);
+      } catch (e) {
+        showToast('File could not be found. Please browse for it again.', 'error');
+        fsState.rememberedHandle = null;
+        fsState.status = 'unlinked';
+        await clearHandleFromIdb();
+        renderFileSyncUI();
+      }
+    }
+
+    async function loadStateFromFileHandle(handle) {
+      const file = await handle.getFile();
+      const text = (await file.text()).trim();
+      if (uiState.activeTimer) { commitActiveTimer(false); updateGlobalTimerPill(); }
+      if (text) {
+        appState = normalizeLoadedAppState(JSON.parse(text));
+      } else {
+        await flushStateToDisk();
+      }
+      fsState.fileHandle = handle;
+      fsState.rememberedHandle = handle;
+      fsState.fileName = handle.name || 'taskflow-data.json';
+      fsState.status = 'synced';
+      fsState.lastSavedTime = formatClockTimeNow();
+      fsState.hasUnsavedChanges = false;
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(appState)); } catch {}
+      evaluateTodayStreak(false);
+      applyTheme();
+      closeTaskDetail();
+      renderAll();
+    }
+
+    async function unlinkLocalFile() {
+      if (fsState.saveTimerId) { clearTimeout(fsState.saveTimerId); fsState.saveTimerId = null; }
+      fsState.fileHandle = null;
+      fsState.rememberedHandle = null;
+      fsState.fileName = '';
+      fsState.status = 'unlinked';
+      fsState.lastSavedTime = '';
+      await clearHandleFromIdb();
+      renderFileSyncUI();
+      showToast('Unlinked local file', 'info');
+    }
+
+    async function initFileSystemPersistence() {
+      if (!fsState.supported) { fsState.status = 'unlinked'; renderFileSyncUI(); return; }
+      const handle = await loadHandleFromIdb();
+      if (handle) {
+        fsState.rememberedHandle = handle;
+        fsState.fileName = handle.name || 'taskflow-data.json';
+        try {
+          const perm = await handle.queryPermission({ mode: 'readwrite' });
+          if (perm === 'granted') { await loadStateFromFileHandle(handle); return; }
+        } catch {}
+        fsState.status = 'reconnect';
+      } else {
+        fsState.status = 'unlinked';
+      }
+      renderFileSyncUI();
+    }
+
+    function dismissFileSyncBanner() { fsState.bannerDismissed = true; renderFileSyncUI(); }
+
+    function openFileSyncModal() {
+      renderFileSyncModalBody();
+      const m = document.getElementById('file-sync-modal');
+      m.classList.remove('hidden'); m.classList.add('flex');
+      lucide.createIcons();
+    }
+    function closeFileSyncModal() {
+      const m = document.getElementById('file-sync-modal');
+      m.classList.add('hidden'); m.classList.remove('flex');
+    }
+
+    function renderFileSyncUI() {
+      const pill = document.getElementById('file-sync-pill');
+      const dot = document.getElementById('file-sync-dot');
+      const text = document.getElementById('file-sync-text');
+      const banner = document.getElementById('file-sync-banner');
+
+      if (pill && dot && text) {
+        if (fsState.status === 'synced' && fsState.fileHandle) {
+          pill.className = 'inline-flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium border transition-all bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800/70 text-emerald-700 dark:text-emerald-300';
+          dot.className = 'w-2 h-2 rounded-full bg-emerald-500 shrink-0';
+          text.textContent = `Synced: ${fsState.fileName}${fsState.lastSavedTime ? ` (${fsState.lastSavedTime})` : ''}`;
+        } else if (fsState.status === 'saving') {
+          pill.className = 'inline-flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium border transition-all bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800/70 text-amber-700 dark:text-amber-300';
+          dot.className = 'w-2 h-2 rounded-full bg-amber-500 timer-pulse shrink-0';
+          text.textContent = `Saving ${fsState.fileName}...`;
+        } else if (fsState.status === 'reconnect' && fsState.rememberedHandle) {
+          pill.className = 'inline-flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium border transition-all bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800/70 text-amber-700 dark:text-amber-300';
+          dot.className = 'w-2 h-2 rounded-full bg-amber-500 shrink-0';
+          text.textContent = `Reconnect ${fsState.fileName}`;
+        } else if (fsState.status === 'error') {
+          pill.className = 'inline-flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium border transition-all bg-rose-50 dark:bg-rose-950/50 border-rose-200 dark:border-rose-800/70 text-rose-700 dark:text-rose-300';
+          dot.className = 'w-2 h-2 rounded-full bg-rose-500 shrink-0';
+          text.textContent = 'Sync Error — Click to Fix';
+        } else {
+          pill.className = 'inline-flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium border transition-all bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800/70 text-amber-700 dark:text-amber-300';
+          dot.className = 'w-2 h-2 rounded-full bg-amber-500 shrink-0';
+          text.textContent = fsState.hasUnsavedChanges ? 'Unsaved · Link Local File' : 'Local File Not Linked';
+        }
+      }
+
+      if (banner) {
+        if (fsState.fileHandle || fsState.bannerDismissed) {
+          banner.classList.add('hidden');
+          banner.innerHTML = '';
+        } else {
+          banner.classList.remove('hidden');
+          if (fsState.status === 'reconnect' && fsState.rememberedHandle) {
+            banner.innerHTML = `
+              <div class="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/70 text-xs sm:text-sm">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <i data-lucide="hard-drive" class="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0"></i>
+                  <p class="text-amber-900 dark:text-amber-200 font-medium truncate">Your local data file <strong>${escapeHtml(fsState.fileName)}</strong> is ready to reconnect.</p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <button onclick="reconnectRememberedFile()" class="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold">Reconnect ${escapeHtml(fsState.fileName)}</button>
+                  <button onclick="openExistingLocalFile()" class="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-xs font-medium">Other File</button>
+                  <button onclick="dismissFileSyncBanner()" class="p-1 rounded-lg text-amber-600/70 hover:text-amber-900"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+              </div>`;
+          } else if (fsState.supported) {
+            banner.innerHTML = `
+              <div class="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-2xl bg-blue-50/90 dark:bg-blue-950/35 border border-blue-200/80 dark:border-blue-800/60 text-xs sm:text-sm">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <i data-lucide="shield-check" class="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0"></i>
+                  <p class="text-blue-900 dark:text-blue-200 font-medium">Link a local <code>.json</code> file so laptop restarts never erase your tasks.</p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <button onclick="openExistingLocalFile()" class="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs font-semibold">Open Existing File</button>
+                  <button onclick="linkNewLocalFile()" class="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold">Link New Save File</button>
+                  <button onclick="dismissFileSyncBanner()" class="p-1 rounded-lg text-blue-600/70 hover:text-blue-900"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+              </div>`;
+          } else {
+            banner.innerHTML = `
+              <div class="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs sm:text-sm">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <i data-lucide="info" class="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0"></i>
+                  <p class="text-amber-900 dark:text-amber-200 font-medium">Use Chrome/Edge for live disk auto-save, or export a JSON backup before closing.</p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <button onclick="triggerImport()" class="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-xs font-semibold">Load Backup</button>
+                  <button onclick="exportData()" class="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold">Save Backup</button>
+                  <button onclick="dismissFileSyncBanner()" class="p-1 rounded-lg text-amber-600/70 hover:text-amber-900"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+              </div>`;
+          }
+          lucide.createIcons();
+        }
+      }
+
+      const modal = document.getElementById('file-sync-modal');
+      if (modal && !modal.classList.contains('hidden')) {
+        renderFileSyncModalBody();
+        lucide.createIcons();
+      }
+    }
+
+    function renderFileSyncModalBody() {
+      const body = document.getElementById('file-sync-modal-body');
+      if (!body) return;
+      const isLinked = !!fsState.fileHandle;
+      const canReconnect = !isLinked && !!fsState.rememberedHandle;
+
+      body.innerHTML = `
+        <div class="p-3.5 rounded-2xl border ${isLinked ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/70' : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700'}">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-xs font-semibold uppercase tracking-wider ${isLinked ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500'}">
+              ${isLinked ? 'Live Auto-Save Active' : (canReconnect ? 'Reconnect Required' : 'Not Linked to a Local File')}
+            </span>
+            <span class="w-2.5 h-2.5 rounded-full ${isLinked ? 'bg-emerald-500' : 'bg-amber-500'}"></span>
+          </div>
+          <p class="text-sm font-bold mt-1 truncate">${isLinked || canReconnect ? escapeHtml(fsState.fileName) : 'Browser cache only (localStorage)'}</p>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            ${isLinked ? `Every change automatically saves to disk.${fsState.lastSavedTime ? ` Last saved at ${fsState.lastSavedTime}.` : ''}` : 'Link a .json file in your Documents folder so restarts never wipe your tasks.'}
+          </p>
+        </div>
+
+        ${fsState.supported ? `
+          <div class="space-y-2">
+            ${canReconnect ? `<button onclick="reconnectRememberedFile()" class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold"><i data-lucide="refresh-cw" class="w-4 h-4"></i><span>Reconnect ${escapeHtml(fsState.fileName)}</span></button>` : ''}
+            <button onclick="linkNewLocalFile()" class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold"><i data-lucide="file-plus-2" class="w-4 h-4"></i><span>Link New Save File (taskflow-data.json)</span></button>
+            <button onclick="openExistingLocalFile()" class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 text-sm font-semibold"><i data-lucide="folder-open" class="w-4 h-4"></i><span>Open Existing Data File (.json)</span></button>
+            ${isLinked ? `
+              <div class="grid grid-cols-2 gap-2 pt-1">
+                <button onclick="flushStateToDisk().then(ok => ok && showToast('Saved to disk now'))" class="py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold">Save Now</button>
+                <button onclick="unlinkLocalFile()" class="py-2 px-3 rounded-xl border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 text-xs font-semibold">Unlink File</button>
+              </div>` : ''}
+          </div>
+        ` : `<div class="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">Direct disk auto-save requires Chrome, Edge, or Brave. Use manual backups below.</div>`}
+
+        <div class="pt-3 border-t border-slate-100 dark:border-slate-800">
+          <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">Manual Backup (All Browsers)</p>
+          <div class="grid grid-cols-2 gap-2">
+            <button onclick="exportData()" class="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold"><i data-lucide="download" class="w-3.5 h-3.5"></i> Export JSON</button>
+            <button onclick="triggerImport()" class="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold"><i data-lucide="upload" class="w-3.5 h-3.5"></i> Import JSON</button>
+          </div>
+        </div>`;
+    }
+
+    /********************************************************************
+     * 4. FIRST-CLASS DUE ITEMS & STREAK ENGINE
+     ********************************************************************/
+    function getDueItemsForDate(dateStr, includeOverdue = false) {
+      const items = [];
+      appState.tasks.forEach(task => {
+        const matchTask = task.dueDate && (includeOverdue ? task.dueDate <= dateStr : task.dueDate === dateStr);
+        if (matchTask) {
+          items.push({ type: 'task', task, item: task, dueDate: task.dueDate, completed: task.completed });
+        }
+        (task.subtasks || []).forEach(st => {
+          const matchSt = st.dueDate && (includeOverdue ? st.dueDate <= dateStr : st.dueDate === dateStr);
+          if (matchSt) {
+            items.push({ type: 'subtask', task, subtask: st, item: st, dueDate: st.dueDate, completed: st.completed });
+          }
+        });
+      });
+      return items;
+    }
+
+    function getTodayProgress() {
+      const today = getLocalDateStr();
+      const allDueTodayOrOverdue = getDueItemsForDate(today, true).filter(x => x.dueDate === today || !x.completed);
+      const total = allDueTodayOrOverdue.length;
+      const done = allDueTodayOrOverdue.filter(x => x.completed).length;
+      return { total, done, remaining: Math.max(0, total - done), isPerfect: total > 0 && done === total };
+    }
+
+    function evaluateTodayStreak(allowCelebration = false) {
+      const today = getLocalDateStr();
+      const prog = getTodayProgress();
+      if (prog.total > 0) {
+        appState.streakHistory[today] = { perfect: prog.isPerfect, done: prog.done, total: prog.total };
+      } else {
+        delete appState.streakHistory[today];
+      }
+
+      if (allowCelebration && prog.isPerfect && !appState.celebratedDates[today]) {
+        appState.celebratedDates[today] = true;
+        saveState();
+        openCelebrationModal();
+      }
+    }
+
+    function calculateStreakStats() {
+      const history = appState.streakHistory || {};
+      const perfectDates = Object.keys(history).filter(d => history[d] && history[d].perfect).sort();
+      const today = getLocalDateStr();
+      const yesterday = addDaysStr(today, -1);
+
+      let currentStreak = 0;
+      let cursor = history[today]?.perfect ? today : (history[yesterday]?.perfect ? yesterday : null);
+      while (cursor && history[cursor]?.perfect) {
+        currentStreak++;
+        cursor = addDaysStr(cursor, -1);
+      }
+
+      let bestStreak = 0;
+      let run = 0;
+      let prev = null;
+      perfectDates.forEach(d => {
+        if (prev && addDaysStr(prev, 1) === d) run++;
+        else run = 1;
+        if (run > bestStreak) bestStreak = run;
+        prev = d;
+      });
+
+      return { currentStreak, bestStreak, totalPerfectDays: perfectDates.length, perfectDates };
+    }
+
+    /********************************************************************
+     * 5. LIVE TIMER ENGINE
+     ********************************************************************/
+    function isTimerRunningFor(taskId, subtaskId = null) {
+      return uiState.activeTimer && uiState.activeTimer.taskId === taskId && (uiState.activeTimer.subtaskId || null) === (subtaskId || null);
+    }
+
+    function toggleTimer(taskId, subtaskId = null) {
+      if (isTimerRunningFor(taskId, subtaskId)) {
+        stopActiveTimer();
+        return;
+      }
+      if (uiState.activeTimer) commitActiveTimer(false);
+      uiState.activeTimer = { taskId, subtaskId: subtaskId || null, startedAt: Date.now() };
+      if (uiState.timerIntervalId) clearInterval(uiState.timerIntervalId);
+      uiState.timerIntervalId = setInterval(updateGlobalTimerPill, 1000);
+      updateGlobalTimerPill();
+      renderWorkspace();
+      if (uiState.detailTaskId === taskId) renderTaskDetail();
+    }
+
+    function stopActiveTimer() {
+      commitActiveTimer(true);
+      updateGlobalTimerPill();
+      renderWorkspace();
+      if (uiState.detailTaskId) renderTaskDetail();
+    }
+
+    function commitActiveTimer(showFeedback = true) {
+      if (!uiState.activeTimer) return;
+      const { taskId, subtaskId, startedAt } = uiState.activeTimer;
+      const elapsed = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+      uiState.activeTimer = null;
+      if (uiState.timerIntervalId) { clearInterval(uiState.timerIntervalId); uiState.timerIntervalId = null; }
+
+      const task = appState.tasks.find(t => t.id === taskId);
+      if (!task) return;
+      const target = subtaskId ? (task.subtasks || []).find(s => s.id === subtaskId) : task;
+      if (!target) return;
+      if (!target.timeLogs) target.timeLogs = [];
+      target.timeLogs.push({ date: getLocalDateStr(), seconds: elapsed });
+      saveState(true);
+      if (showFeedback) showToast(`Logged ${formatDuration(elapsed)}`);
+    }
+
+    function updateGlobalTimerPill() {
+      const pill = document.getElementById('global-timer-pill');
+      const label = document.getElementById('global-timer-label');
+      const clock = document.getElementById('global-timer-clock');
+      if (!uiState.activeTimer) {
+        pill.classList.add('hidden'); pill.classList.remove('flex');
+        return;
+      }
+      const task = appState.tasks.find(t => t.id === uiState.activeTimer.taskId);
+      const target = uiState.activeTimer.subtaskId ? (task?.subtasks || []).find(s => s.id === uiState.activeTimer.subtaskId) : task;
+      const elapsed = Math.floor((Date.now() - uiState.activeTimer.startedAt) / 1000);
+      pill.classList.remove('hidden'); pill.classList.add('flex');
+      label.textContent = target ? target.title : 'Running';
+      clock.textContent = formatClock(elapsed);
+    }
+
+    /********************************************************************
+     * 6. CRUD ACTIONS (PROJECTS, TAGS, TASKS, SUBTASKS, RECURRING)
+     ********************************************************************/
+    function toggleTaskComplete(taskId) {
+      const task = appState.tasks.find(t => t.id === taskId);
+      if (!task) return;
+      task.completed = !task.completed;
+      task.completedAt = task.completed ? getLocalDateStr() : null;
+      evaluateTodayStreak(task.completed);
+      saveState();
+      renderAll();
+    }
+
+    function toggleSubtaskComplete(taskId, subtaskId) {
+      const task = appState.tasks.find(t => t.id === taskId);
+      if (!task) return;
+      const st = (task.subtasks || []).find(s => s.id === subtaskId);
+      if (!st) return;
+
+      st.completed = !st.completed;
+      st.completedAt = st.completed ? getLocalDateStr() : null;
+
+      // Just-in-time recurring spawn on completion
+      if (st.completed && st.recurrence && !st.recurrence.spawnedNext) {
+        const nextDate = computeNextRecurringDate(st.dueDate || st.recurrence.startDate, st.recurrence.freq);
+        if (nextDate && (!st.recurrence.endDate || nextDate <= st.recurrence.endDate)) {
+          st.recurrence.spawnedNext = true;
+          task.subtasks.push({
+            id: uid('st'),
+            title: st.title,
+            dueDate: nextDate,
+            tagIds: [...(st.tagIds || [])],
+            timeLogs: [],
+            completed: false,
+            completedAt: null,
+            recurrence: {
+              freq: st.recurrence.freq,
+              startDate: st.recurrence.startDate,
+              endDate: st.recurrence.endDate || '',
+              seriesId: st.recurrence.seriesId,
+              spawnedNext: false
+            }
+          });
+          showToast(`Scheduled next ${st.recurrence.freq} occurrence for ${formatHumanDate(nextDate)}`);
+        } else {
+          st.recurrence.spawnedNext = true;
+        }
+      }
+
+      evaluateTodayStreak(st.completed);
+      saveState();
+      renderAll();
+    }
+
+    function deleteTask(taskId) {
+      openConfirmModal('Delete Task', 'Delete this task and all of its subtasks permanently?', () => {
+        if (uiState.activeTimer && uiState.activeTimer.taskId === taskId) commitActiveTimer(false);
+        appState.tasks = appState.tasks.filter(t => t.id !== taskId);
+        if (uiState.detailTaskId === taskId) closeTaskDetail();
+        evaluateTodayStreak(false);
+        saveState();
+        renderAll();
+        showToast('Task deleted', 'info');
+      });
+    }
+
+    function requestDeleteSubtask(taskId, subtaskId) {
+      const task = appState.tasks.find(t => t.id === taskId);
+      const st = (task?.subtasks || []).find(s => s.id === subtaskId);
+      if (!st) return;
+
+      if (st.recurrence && !st.completed && !st.recurrence.spawnedNext) {
+        uiState.pendingRecurringDelete = { taskId, subtaskId };
+        const m = document.getElementById('recurring-delete-modal');
+        m.classList.remove('hidden'); m.classList.add('flex');
+        return;
+      }
+
+      if (uiState.activeTimer && uiState.activeTimer.subtaskId === subtaskId) commitActiveTimer(false);
+      task.subtasks = task.subtasks.filter(s => s.id !== subtaskId);
+      evaluateTodayStreak(false);
+      saveState();
+      renderAll();
+      showToast('Subtask deleted', 'info');
+    }
+
+    function handleRecurringDeleteChoice(choice) {
+      const info = uiState.pendingRecurringDelete;
+      closeRecurringDeleteModal();
+      if (!info) return;
+      const task = appState.tasks.find(t => t.id === info.taskId);
+      const st = (task?.subtasks || []).find(s => s.id === info.subtaskId);
+      if (!task || !st) return;
+
+      if (choice === 'skip' && st.recurrence) {
+        const nextDate = computeNextRecurringDate(st.dueDate || st.recurrence.startDate, st.recurrence.freq);
+        if (nextDate && (!st.recurrence.endDate || nextDate <= st.recurrence.endDate)) {
+          task.subtasks.push({
+            id: uid('st'),
+            title: st.title,
+            dueDate: nextDate,
+            tagIds: [...(st.tagIds || [])],
+            timeLogs: [],
+            completed: false,
+            completedAt: null,
+            recurrence: { ...st.recurrence, spawnedNext: false }
+          });
+          showToast(`Skipped. Next scheduled for ${formatHumanDate(nextDate)}`);
+        }
+      } else {
+        showToast('Recurring subtask stopped', 'info');
+      }
+
+      if (uiState.activeTimer && uiState.activeTimer.subtaskId === info.subtaskId) commitActiveTimer(false);
+      task.subtasks = task.subtasks.filter(s => s.id !== info.subtaskId);
+      evaluateTodayStreak(false);
+      saveState();
+      renderAll();
+    }
+
+    function closeRecurringDeleteModal() {
+      uiState.pendingRecurringDelete = null;
+      const m = document.getElementById('recurring-delete-modal');
+      m.classList.add('hidden'); m.classList.remove('flex');
+    }
+
+    function deleteProject(projectId) {
+      if (projectId === 'inbox') return;
+      const proj = getProjectById(projectId);
+      openConfirmModal('Delete Project', `Permanently delete "${proj.name}" and all tasks inside it?`, () => {
+        appState.tasks = appState.tasks.filter(t => t.projectId !== projectId);
+        appState.projects = appState.projects.filter(p => p.id !== projectId);
+        if (uiState.view === 'project' && uiState.selectedProjectId === projectId) uiState.view = 'today';
+        evaluateTodayStreak(false);
+        saveState();
+        renderAll();
+        showToast('Project deleted', 'info');
+      });
+    }
+
+    function deleteTag(tagId, e) {
+      if (e) e.stopPropagation();
+      const tag = getTagById(tagId);
+      openConfirmModal('Delete Tag', `Remove tag "${tag?.name}" from all tasks and subtasks?`, () => {
+        appState.tags = appState.tags.filter(t => t.id !== tagId);
+        appState.tasks.forEach(t => {
+          t.tagIds = (t.tagIds || []).filter(id => id !== tagId);
+          (t.subtasks || []).forEach(st => { st.tagIds = (st.tagIds || []).filter(id => id !== tagId); });
+        });
+        if (uiState.view === 'tag' && uiState.selectedTagId === tagId) uiState.view = 'today';
+        saveState();
+        renderAll();
+        showToast('Tag deleted', 'info');
+      });
+    }
+
+    /********************************************************************
+     * 7. MODALS (QUICK ADD, PROJECT, TAG, CONFIRM, CELEBRATION)
+     ********************************************************************/
+    function openQuickAddModal(prefillDate = '') {
+      const form = document.getElementById('quick-add-form');
+      form.reset();
+      uiState.qaSelectedTags = [];
+      const projSel = document.getElementById('qa-project');
+      projSel.innerHTML = appState.projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+      if (uiState.view === 'project' && uiState.selectedProjectId) projSel.value = uiState.selectedProjectId;
+      document.getElementById('qa-due').value = prefillDate || (uiState.view === 'today' ? getLocalDateStr() : '');
+      renderQaTagsPicker();
+      const m = document.getElementById('quick-add-modal');
+      m.classList.remove('hidden'); m.classList.add('flex');
+      setTimeout(() => document.getElementById('qa-title').focus(), 50);
+    }
+
+    function closeQuickAddModal() {
+      const m = document.getElementById('quick-add-modal');
+      m.classList.add('hidden'); m.classList.remove('flex');
+    }
+
+    function renderQaTagsPicker() {
+      const el = document.getElementById('qa-tags-picker');
+      if (!appState.tags.length) {
+        el.innerHTML = `<span class="text-xs text-slate-400">No tags yet. Create tags from the sidebar.</span>`;
+        return;
+      }
+      el.innerHTML = appState.tags.map(t => {
+        const active = uiState.qaSelectedTags.includes(t.id);
+        return `<button type="button" onclick="toggleQaTag('${t.id}')" class="px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${active ? 'text-white border-transparent shadow-xs' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}" style="${active ? `background:${t.color}` : ''}">${escapeHtml(t.name)}</button>`;
+      }).join('');
+    }
+
+    function toggleQaTag(tagId) {
+      if (uiState.qaSelectedTags.includes(tagId)) uiState.qaSelectedTags = uiState.qaSelectedTags.filter(id => id !== tagId);
+      else uiState.qaSelectedTags.push(tagId);
+      renderQaTagsPicker();
+    }
+
+    function submitQuickAdd(e) {
+      e.preventDefault();
+      const title = document.getElementById('qa-title').value.trim();
+      if (!title) return;
+      appState.tasks.push({
+        id: uid('task'),
+        title,
+        description: document.getElementById('qa-desc').value.trim(),
+        projectId: document.getElementById('qa-project').value || 'inbox',
+        dueDate: document.getElementById('qa-due').value || '',
+        priority: Number(document.getElementById('qa-priority').value) || 4,
+        tagIds: [...uiState.qaSelectedTags],
+        timeLogs: [],
+        subtasks: [],
+        completed: false,
+        completedAt: null
+      });
+      evaluateTodayStreak(false);
+      saveState();
+      closeQuickAddModal();
+      renderAll();
+      showToast('Task created');
+    }
+
+    function openProjectModal() {
+      document.getElementById('proj-name').value = '';
+      uiState.projSelectedColor = PALETTE[5];
+      renderColorPicker('proj-color-picker', uiState.projSelectedColor, 'selectProjColor');
+      const m = document.getElementById('project-modal');
+      m.classList.remove('hidden'); m.classList.add('flex');
+      setTimeout(() => document.getElementById('proj-name').focus(), 50);
+    }
+    function closeProjectModal() {
+      const m = document.getElementById('project-modal');
+      m.classList.add('hidden'); m.classList.remove('flex');
+    }
+    function selectProjColor(c) { uiState.projSelectedColor = c; renderColorPicker('proj-color-picker', c, 'selectProjColor'); }
+    function submitProject(e) {
+      e.preventDefault();
+      const name = document.getElementById('proj-name').value.trim();
+      if (!name) return;
+      const proj = { id: uid('proj'), name, color: uiState.projSelectedColor, isSystem: false };
+      appState.projects.push(proj);
+      saveState();
+      closeProjectModal();
+      setView('project', proj.id);
+      showToast(`Project "${name}" added`);
+    }
+
+    function openTagModal() {
+      document.getElementById('tag-name').value = '';
+      uiState.tagSelectedColor = PALETTE[7];
+      renderColorPicker('tag-color-picker', uiState.tagSelectedColor, 'selectTagColor');
+      const m = document.getElementById('tag-modal');
+      m.classList.remove('hidden'); m.classList.add('flex');
+      setTimeout(() => document.getElementById('tag-name').focus(), 50);
+    }
+    function closeTagModal() {
+      const m = document.getElementById('tag-modal');
+      m.classList.add('hidden'); m.classList.remove('flex');
+    }
+    function selectTagColor(c) { uiState.tagSelectedColor = c; renderColorPicker('tag-color-picker', c, 'selectTagColor'); }
+    function submitTag(e) {
+      e.preventDefault();
+      const name = document.getElementById('tag-name').value.trim();
+      if (!name) return;
+      appState.tags.push({ id: uid('tag'), name, color: uiState.tagSelectedColor });
+      saveState();
+      closeTagModal();
+      renderAll();
+      showToast(`Tag "${name}" created`);
+    }
+
+    function renderColorPicker(containerId, selected, fnName) {
+      document.getElementById(containerId).innerHTML = PALETTE.map(c =>
+        `<button type="button" onclick="${fnName}('${c}')" class="w-7 h-7 rounded-full transition-transform ${selected === c ? 'ring-2 ring-offset-2 ring-slate-900 dark:ring-white scale-110' : 'hover:scale-105'}" style="background:${c}"></button>`
+      ).join('');
+    }
+
+    function openConfirmModal(title, message, cb) {
+      document.getElementById('confirm-title').textContent = title;
+      document.getElementById('confirm-message').textContent = message;
+      pendingConfirmCallback = cb;
+      const m = document.getElementById('confirm-modal');
+      m.classList.remove('hidden'); m.classList.add('flex');
+    }
+    function closeConfirmModal() {
+      pendingConfirmCallback = null;
+      const m = document.getElementById('confirm-modal');
+      m.classList.add('hidden'); m.classList.remove('flex');
+    }
+    function executeConfirmCallback() {
+      const cb = pendingConfirmCallback;
+      closeConfirmModal();
+      if (cb) cb();
+    }
+
+    function openCelebrationModal() {
+      const stats = calculateStreakStats();
+      const prog = getTodayProgress();
+      const todayStr = getLocalDateStr();
+      let todaySecs = 0;
+      appState.tasks.forEach(t => {
+        (t.timeLogs || []).filter(l => l.date === todayStr).forEach(l => todaySecs += l.seconds);
+        (t.subtasks || []).forEach(st => (st.timeLogs || []).filter(l => l.date === todayStr).forEach(l => todaySecs += l.seconds));
+      });
+
+      document.getElementById('celeb-streak').textContent = `${Math.max(1, stats.currentStreak)}d 🔥`;
+      document.getElementById('celeb-count').textContent = prog.done;
+      document.getElementById('celeb-time').textContent = formatDuration(todaySecs);
+
+      const quotes = [
+        'Consistency compounds faster than intensity. Show up tomorrow and keep the flame alive!',
+        'Zero leftovers today. That is how elite focus is built—one clean day at a time.',
+        'Momentum is on your side. Protect this streak tomorrow and watch what you accomplish!'
+      ];
+      document.getElementById('celeb-quote').textContent = quotes[stats.currentStreak % quotes.length];
+
+      const m = document.getElementById('celebration-modal');
+      m.classList.remove('hidden'); m.classList.add('flex');
+      lucide.createIcons();
+      startConfetti();
+    }
+
+    function closeCelebrationModal() {
+      stopConfetti();
+      const m = document.getElementById('celebration-modal');
+      m.classList.add('hidden'); m.classList.remove('flex');
+    }
+
+    function startConfetti() {
+      const canvas = document.getElementById('confetti-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      const pieces = Array.from({ length: 120 }, () => ({
+        x: Math.random() * canvas.width,
+        y: Math.random() * -canvas.height,
+        w: 6 + Math.random() * 6,
+        h: 8 + Math.random() * 8,
+        color: PALETTE[Math.floor(Math.random() * PALETTE.length)],
+        vy: 2.5 + Math.random() * 4,
+        vx: (Math.random() - 0.5) * 3,
+        rot: Math.random() * Math.PI * 2,
+        vrot: (Math.random() - 0.5) * 0.2
+      }));
+      function loop() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        pieces.forEach(p => {
+          p.x += p.vx; p.y += p.vy; p.rot += p.vrot;
+          if (p.y > canvas.height) { p.y = -12; p.x = Math.random() * canvas.width; }
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+          ctx.restore();
+        });
+        confettiAnimId = requestAnimationFrame(loop);
+      }
+      stopConfetti();
+      loop();
+    }
+    function stopConfetti() {
+      if (confettiAnimId) { cancelAnimationFrame(confettiAnimId); confettiAnimId = null; }
+    }
+
+    /********************************************************************
+     * 8. SIDEBAR, HEADER & NAVIGATION
+     ********************************************************************/
+    function setView(view, id = null) {
+      uiState.view = view;
+      uiState.selectedProjectId = view === 'project' ? id : null;
+      uiState.selectedTagId = view === 'tag' ? id : null;
+      toggleMobileSidebar(false);
+      renderAll();
+    }
+
+    function toggleMobileSidebar(open) {
+      const sb = document.getElementById('sidebar');
+      const bd = document.getElementById('mobile-sidebar-backdrop');
+      if (open) { sb.classList.remove('-translate-x-full'); bd.classList.remove('hidden'); }
+      else { sb.classList.add('-translate-x-full'); bd.classList.add('hidden'); }
+    }
+
+    function renderSidebar() {
+      const today = getLocalDateStr();
+      const todayCount = getDueItemsForDate(today, true).filter(x => !x.completed).length;
+      const upcomingCount = appState.tasks.reduce((acc, t) => {
+        if (!t.completed && t.dueDate) acc++;
+        (t.subtasks || []).forEach(st => { if (!st.completed && st.dueDate) acc++; });
+        return acc;
+      }, 0);
+      const allCount = appState.tasks.filter(t => !t.completed).length;
+      const streakStats = calculateStreakStats();
+
+      const navItems = [
+        { id: 'today', label: 'Today', icon: 'calendar-check-2', color: 'text-emerald-500', badge: todayCount || '' },
+        { id: 'upcoming', label: 'Upcoming', icon: 'calendar-clock', color: 'text-violet-500', badge: upcomingCount || '' },
+        { id: 'all', label: 'All Tasks', icon: 'layers', color: 'text-blue-500', badge: allCount || '' },
+        { id: 'calendar', label: 'Calendar View', icon: 'calendar-days', color: 'text-amber-500', badge: '' },
+        { id: 'analytics', label: 'Time Analytics', icon: 'pie-chart', color: 'text-rose-500', badge: '' },
+        { id: 'streaks', label: 'Streaks', icon: 'flame', color: 'text-orange-500', badge: streakStats.currentStreak > 0 ? `${streakStats.currentStreak}🔥` : '' }
+      ];
+
+      document.getElementById('sidebar-main-nav').innerHTML = navItems.map(item => {
+        const active = uiState.view === item.id;
+        return `
+          <button onclick="setView('${item.id}')" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-colors ${active ? 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 font-semibold' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70'}">
+            <span class="flex items-center gap-2.5">
+              <i data-lucide="${item.icon}" class="w-4 h-4 ${active ? 'text-red-600 dark:text-red-400' : item.color}"></i>
+              <span>${item.label}</span>
+            </span>
+            ${item.badge !== '' ? `<span class="text-xs font-semibold px-1.5 py-0.5 rounded-md ${active ? 'bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-200' : 'text-slate-400'}">${item.badge}</span>` : ''}
+          </button>`;
+      }).join('');
+
+      document.getElementById('sidebar-projects').innerHTML = appState.projects.map(p => {
+        const active = uiState.view === 'project' && uiState.selectedProjectId === p.id;
+        const count = appState.tasks.filter(t => t.projectId === p.id && !t.completed).length;
+        return `
+          <div onclick="setView('project', '${p.id}')" class="group flex items-center justify-between px-3 py-2 rounded-xl text-sm cursor-pointer transition-colors ${active ? 'bg-slate-100 dark:bg-slate-800 font-semibold text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/70 dark:hover:bg-slate-800/50'}">
+            <span class="flex items-center gap-2.5 min-w-0">
+              <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${p.color}"></span>
+              <span class="truncate">${escapeHtml(p.name)}</span>
+            </span>
+            <span class="flex items-center gap-1 shrink-0">
+              ${count > 0 ? `<span class="text-xs text-slate-400">${count}</span>` : ''}
+              ${!p.isSystem ? `<button onclick="event.stopPropagation(); deleteProject('${p.id}')" title="Delete Project" class="opacity-0 group-hover:opacity-100 p-1 rounded text-slate-400 hover:text-rose-500"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
+            </span>
+          </div>`;
+      }).join('');
+
+      const tagsEl = document.getElementById('sidebar-tags');
+      if (!appState.tags.length) {
+        tagsEl.innerHTML = `<span class="text-xs text-slate-400 px-1">No tags yet</span>`;
+      } else {
+        tagsEl.innerHTML = appState.tags.map(t => {
+          const active = uiState.view === 'tag' && uiState.selectedTagId === t.id;
+          return `
+            <span onclick="setView('tag', '${t.id}')" class="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer border transition-all ${active ? 'ring-2 ring-offset-1 ring-slate-400 dark:ring-slate-600' : 'hover:opacity-90'}" style="background:${t.color}18; color:${t.color}; border-color:${t.color}35;">
+              <span class="w-1.5 h-1.5 rounded-full" style="background:${t.color}"></span>
+              <span>${escapeHtml(t.name)}</span>
+              <button onclick="deleteTag('${t.id}', event)" class="opacity-0 group-hover:opacity-100 hover:text-rose-600"><i data-lucide="x" class="w-3 h-3"></i></button>
+            </span>`;
+        }).join('');
+      }
+    }
+
+    function renderHeader() {
+      const titleEl = document.getElementById('header-title');
+      const subEl = document.getElementById('header-subtitle');
+      const todayLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+
+      if (uiState.view === 'today') { titleEl.textContent = 'Today'; subEl.textContent = todayLabel; }
+      else if (uiState.view === 'upcoming') { titleEl.textContent = 'Upcoming'; subEl.textContent = 'All scheduled tasks & subtasks'; }
+      else if (uiState.view === 'all') { titleEl.textContent = 'All Tasks'; subEl.textContent = `${appState.tasks.length} total tasks across ${appState.projects.length} projects`; }
+      else if (uiState.view === 'calendar') { titleEl.textContent = 'Calendar View'; subEl.textContent = 'Click any day to add a task, or click a chip to edit'; }
+      else if (uiState.view === 'analytics') { titleEl.textContent = 'Time Analytics'; subEl.textContent = 'Where your focused time goes across projects, tags, tasks & subtasks'; }
+      else if (uiState.view === 'streaks') { titleEl.textContent = 'Daily Streaks'; subEl.textContent = 'Complete every task due each day to build unstoppable consistency'; }
+      else if (uiState.view === 'project') {
+        const p = getProjectById(uiState.selectedProjectId);
+        titleEl.textContent = p ? p.name : 'Project';
+        subEl.textContent = 'Project workspace';
+      } else if (uiState.view === 'tag') {
+        const t = getTagById(uiState.selectedTagId);
+        titleEl.textContent = t ? `# ${t.name}` : 'Tag';
+        subEl.textContent = 'Tasks & subtasks with this tag';
+      }
+    }
+
+    /********************************************************************
+     * 9. WORKSPACE RENDERING (TASK LISTS, CALENDAR, ANALYTICS, STREAKS)
+     ********************************************************************/
+    function renderWorkspace() {
+      const container = document.getElementById('workspace-content');
+      if (uiState.view === 'today') renderTodayView(container);
+      else if (uiState.view === 'upcoming') renderUpcomingView(container);
+      else if (uiState.view === 'all') renderProjectOrAllView(container, null);
+      else if (uiState.view === 'project') renderProjectOrAllView(container, uiState.selectedProjectId);
+      else if (uiState.view === 'tag') renderTagView(container, uiState.selectedTagId);
+      else if (uiState.view === 'calendar') renderCalendarView(container);
+      else if (uiState.view === 'analytics') renderAnalyticsView(container);
+      else if (uiState.view === 'streaks') renderStreaksView(container);
+      lucide.createIcons();
+    }
+
+    function renderTagsHtml(tagIds) {
+      return (tagIds || []).map(id => {
+        const t = getTagById(id);
+        if (!t) return '';
+        return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium" style="background:${t.color}18; color:${t.color};">${escapeHtml(t.name)}</span>`;
+      }).join('');
+    }
+
+    function renderTaskCard(task) {
+      const proj = getProjectById(task.projectId);
+      const pMeta = PRIORITY_META[task.priority || 4];
+      const subs = task.subtasks || [];
+      const doneSubs = subs.filter(s => s.completed).length;
+      const expanded = !!uiState.expandedTasks[task.id];
+      const totalSecs = getTaskTotalSeconds(task);
+      const running = isTimerRunningFor(task.id, null);
+
+      return `
+        <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-3.5 shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition-all">
+          <div class="flex items-start gap-3">
+            <button onclick="toggleTaskComplete('${task.id}')" class="mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${task.completed ? 'bg-emerald-500 border-emerald-500 text-white' : pMeta.ring}">
+              ${task.completed ? '<i data-lucide="check" class="w-3 h-3"></i>' : ''}
+            </button>
+
+            <div class="flex-1 min-w-0 cursor-pointer" onclick="openTaskDetail('${task.id}')">
+              <div class="flex items-center gap-2 flex-wrap">
+                <p class="text-sm font-semibold ${task.completed ? 'line-through text-slate-400' : ''}">${escapeHtml(task.title)}</p>
+                ${task.priority < 4 ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:${pMeta.color}18; color:${pMeta.color};">${pMeta.label}</span>` : ''}
+              </div>
+              <div class="flex items-center flex-wrap gap-2 mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:${proj.color}"></span>${escapeHtml(proj.name)}</span>
+                ${task.dueDate ? `<span class="inline-flex items-center gap-1 ${!task.completed && isOverdue(task.dueDate) ? 'text-rose-600 dark:text-rose-400 font-semibold' : ''}"><i data-lucide="calendar" class="w-3 h-3"></i>${formatHumanDate(task.dueDate)}</span>` : ''}
+                ${totalSecs > 0 ? `<span class="inline-flex items-center gap-1"><i data-lucide="clock" class="w-3 h-3"></i>${formatDuration(totalSecs)}</span>` : ''}
+                ${subs.length > 0 ? `<button onclick="event.stopPropagation(); toggleExpandTask('${task.id}')" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[11px] font-medium"><i data-lucide="${expanded ? 'chevron-down' : 'chevron-right'}" class="w-3 h-3"></i>${doneSubs}/${subs.length} subtasks</button>` : ''}
+                ${renderTagsHtml(task.tagIds)}
+              </div>
+            </div>
+
+            <div class="flex items-center gap-1 shrink-0">
+              <button onclick="toggleTimer('${task.id}')" title="${running ? 'Stop Timer' : 'Start Timer'}" class="p-1.5 rounded-lg transition-colors ${running ? 'bg-rose-100 dark:bg-rose-950 text-rose-600' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700'}">
+                <i data-lucide="${running ? 'square' : 'play'}" class="w-3.5 h-3.5 ${running ? 'fill-current' : ''}"></i>
+              </button>
+              <button onclick="deleteTask('${task.id}')" title="Delete Task" class="p-1.5 rounded-lg text-slate-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:text-rose-600 transition-colors">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+
+          ${expanded && subs.length > 0 ? `
+            <div class="mt-3 pt-2.5 pl-7 border-t border-slate-100 dark:border-slate-800 space-y-2">
+              ${subs.map(st => {
+                const stRunning = isTimerRunningFor(task.id, st.id);
+                const stSecs = getItemSeconds(st);
+                return `
+                  <div class="flex items-center justify-between gap-2 text-xs">
+                    <div class="flex items-center gap-2 min-w-0">
+                      <button onclick="toggleSubtaskComplete('${task.id}', '${st.id}')" class="w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${st.completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 dark:border-slate-600'}">
+                        ${st.completed ? '<i data-lucide="check" class="w-2.5 h-2.5"></i>' : ''}
+                      </button>
+                      <span onclick="openTaskDetail('${task.id}', '${st.id}')" class="truncate cursor-pointer font-medium ${st.completed ? 'line-through text-slate-400' : ''}">${escapeHtml(st.title)}</span>
+                      ${st.recurrence ? `<span class="px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300 text-[10px] font-semibold">↻ ${st.recurrence.freq}</span>` : ''}
+                      ${st.dueDate ? `<span class="${!st.completed && isOverdue(st.dueDate) ? 'text-rose-500 font-semibold' : 'text-slate-400'}">${formatHumanDate(st.dueDate)}</span>` : ''}
+                      ${stSecs > 0 ? `<span class="text-slate-400">· ${formatDuration(stSecs)}</span>` : ''}
+                      ${renderTagsHtml(st.tagIds)}
+                    </div>
+                    <button onclick="toggleTimer('${task.id}', '${st.id}')" class="p-1 rounded ${stRunning ? 'text-rose-600 bg-rose-50 dark:bg-rose-950' : 'text-slate-400 hover:text-slate-700'}"><i data-lucide="${stRunning ? 'square' : 'play'}" class="w-3 h-3"></i></button>
+                  </div>`;
+              }).join('')}
+            </div>` : ''}
+        </div>`;
+    }
+
+    function renderSubtaskCard(task, st) {
+      const proj = getProjectById(task.projectId);
+      const stSecs = getItemSeconds(st);
+      const running = isTimerRunningFor(task.id, st.id);
+      return `
+        <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-3.5 shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition-all">
+          <div class="flex items-start gap-3">
+            <button onclick="toggleSubtaskComplete('${task.id}', '${st.id}')" class="mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${st.completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 dark:border-slate-600'}">
+              ${st.completed ? '<i data-lucide="check" class="w-3 h-3"></i>' : ''}
+            </button>
+            <div class="flex-1 min-w-0 cursor-pointer" onclick="openTaskDetail('${task.id}', '${st.id}')">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500">Subtask</span>
+                <p class="text-sm font-semibold ${st.completed ? 'line-through text-slate-400' : ''}">${escapeHtml(st.title)}</p>
+                ${st.recurrence ? `<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300">↻ ${st.recurrence.freq}</span>` : ''}
+              </div>
+              <div class="flex items-center flex-wrap gap-2 mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:${proj.color}"></span>${escapeHtml(proj.name)}</span>
+                <span class="truncate max-w-[200px]">↳ ${escapeHtml(task.title)}</span>
+                ${st.dueDate ? `<span class="inline-flex items-center gap-1 ${!st.completed && isOverdue(st.dueDate) ? 'text-rose-600 font-semibold' : ''}"><i data-lucide="calendar" class="w-3 h-3"></i>${formatHumanDate(st.dueDate)}</span>` : ''}
+                ${stSecs > 0 ? `<span class="inline-flex items-center gap-1"><i data-lucide="clock" class="w-3 h-3"></i>${formatDuration(stSecs)}</span>` : ''}
+                ${renderTagsHtml(st.tagIds)}
+              </div>
+            </div>
+            <div class="flex items-center gap-1 shrink-0">
+              <button onclick="toggleTimer('${task.id}', '${st.id}')" class="p-1.5 rounded-lg ${running ? 'bg-rose-100 dark:bg-rose-950 text-rose-600' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}"><i data-lucide="${running ? 'square' : 'play'}" class="w-3.5 h-3.5"></i></button>
+              <button onclick="requestDeleteSubtask('${task.id}', '${st.id}')" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function toggleExpandTask(taskId) {
+      uiState.expandedTasks[taskId] = !uiState.expandedTasks[taskId];
+      renderWorkspace();
+    }
+
+    function renderCollapsibleCompleted(completedItemsHtml, count) {
+      if (count === 0) return '';
+      return `
+        <div class="pt-4 border-t border-slate-200/70 dark:border-slate-800">
+          <button onclick="uiState.showCompleted = !uiState.showCompleted; renderWorkspace();" class="flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 mb-3">
+            <i data-lucide="${uiState.showCompleted ? 'chevron-down' : 'chevron-right'}" class="w-4 h-4"></i>
+            <span>Completed (${count})</span>
+          </button>
+          ${uiState.showCompleted ? `<div class="space-y-2.5 opacity-75">${completedItemsHtml}</div>` : ''}
+        </div>`;
+    }
+
+    function renderTodayView(container) {
+      const today = getLocalDateStr();
+      const allItems = getDueItemsForDate(today, true);
+      const overdue = allItems.filter(x => !x.completed && x.dueDate < today);
+      const dueToday = allItems.filter(x => !x.completed && x.dueDate === today);
+      const completedToday = allItems.filter(x => x.completed && x.dueDate === today);
+      const prog = getTodayProgress();
+      const pct = prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0;
+
+      container.innerHTML = `
+        <div class="max-w-4xl mx-auto space-y-6 animate-fade-in">
+          <!-- Today Focus Progress Bar -->
+          <div class="p-4 rounded-2xl border ${prog.isPerfect ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/70' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'} shadow-xs">
+            <div class="flex items-center justify-between gap-2 text-xs font-semibold mb-2">
+              <span class="${prog.isPerfect ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-200'}">
+                ${prog.total === 0 ? 'No tasks scheduled for today yet.' : (prog.isPerfect ? `All ${prog.total} tasks completed today — Streak locked in! 🔥` : `${prog.done}/${prog.total} tasks done today — ${prog.remaining} left to lock in your streak 🔥`)}
+              </span>
+              <span class="text-slate-500">${pct}%</span>
+            </div>
+            <div class="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+              <div class="h-full rounded-full transition-all duration-300 ${prog.isPerfect ? 'bg-emerald-500' : 'bg-gradient-to-r from-orange-500 to-red-500'}" style="width:${pct}%"></div>
+            </div>
+          </div>
+
+          ${overdue.length > 0 ? `
+            <section class="space-y-2.5">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">Overdue (${overdue.length})</h3>
+              ${overdue.map(x => x.type === 'task' ? renderTaskCard(x.task) : renderSubtaskCard(x.task, x.subtask)).join('')}
+            </section>` : ''}
+
+          <section class="space-y-2.5">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Due Today (${dueToday.length})</h3>
+            ${dueToday.length > 0
+              ? dueToday.map(x => x.type === 'task' ? renderTaskCard(x.task) : renderSubtaskCard(x.task, x.subtask)).join('')
+              : `<div class="p-10 text-center rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-400 text-sm">You're all clear for today. Click <strong>+ Add Task</strong> to plan your day.</div>`}
+          </section>
+
+          ${renderCollapsibleCompleted(completedToday.map(x => x.type === 'task' ? renderTaskCard(x.task) : renderSubtaskCard(x.task, x.subtask)).join(''), completedToday.length)}
+        </div>`;
+    }
+
+    function renderUpcomingView(container) {
+      const items = [];
+      appState.tasks.forEach(t => {
+        if (!t.completed && t.dueDate) items.push({ type: 'task', task: t, dueDate: t.dueDate });
+        (t.subtasks || []).forEach(st => { if (!st.completed && st.dueDate) items.push({ type: 'subtask', task: t, subtask: st, dueDate: st.dueDate }); });
+      });
+      items.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+
+      if (!items.length) {
+        container.innerHTML = `<div class="max-w-4xl mx-auto p-12 text-center rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-400 text-sm">No upcoming dated tasks or subtasks yet.</div>`;
+        return;
+      }
+
+      const groups = {};
+      const today = getLocalDateStr();
+      items.forEach(item => {
+        const key = item.dueDate < today ? 'Overdue' : item.dueDate;
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(item);
+      });
+
+      container.innerHTML = `<div class="max-w-4xl mx-auto space-y-6 animate-fade-in">
+        ${Object.keys(groups).map(key => `
+          <section class="space-y-2.5">
+            <h3 class="text-xs font-bold uppercase tracking-wider ${key === 'Overdue' ? 'text-rose-600' : 'text-slate-400'}">${key === 'Overdue' ? 'Overdue' : formatHumanDate(key)} (${groups[key].length})</h3>
+            ${groups[key].map(x => x.type === 'task' ? renderTaskCard(x.task) : renderSubtaskCard(x.task, x.subtask)).join('')}
+          </section>`).join('')}
+      </div>`;
+    }
+
+    function renderProjectOrAllView(container, projectId) {
+      const list = projectId ? appState.tasks.filter(t => t.projectId === projectId) : appState.tasks;
+      const active = list.filter(t => !t.completed);
+      const completed = list.filter(t => t.completed);
+
+      container.innerHTML = `
+        <div class="max-w-4xl mx-auto space-y-5 animate-fade-in">
+          ${active.length > 0
+            ? `<div class="space-y-2.5">${active.map(renderTaskCard).join('')}</div>`
+            : `<div class="p-12 text-center rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-400 text-sm">No active tasks here yet. Click <strong>+ Add Task</strong> to get started.</div>`}
+          ${renderCollapsibleCompleted(completed.map(renderTaskCard).join(''), completed.length)}
+        </div>`;
+    }
+
+    function renderTagView(container, tagId) {
+      const active = [];
+      const completed = [];
+      appState.tasks.forEach(t => {
+        if ((t.tagIds || []).includes(tagId)) (t.completed ? completed : active).push({ type: 'task', task: t });
+        (t.subtasks || []).forEach(st => {
+          if ((st.tagIds || []).includes(tagId)) (st.completed ? completed : active).push({ type: 'subtask', task: t, subtask: st });
+        });
+      });
+
+      container.innerHTML = `
+        <div class="max-w-4xl mx-auto space-y-5 animate-fade-in">
+          ${active.length > 0
+            ? `<div class="space-y-2.5">${active.map(x => x.type === 'task' ? renderTaskCard(x.task) : renderSubtaskCard(x.task, x.subtask)).join('')}</div>`
+            : `<div class="p-12 text-center rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-400 text-sm">No active tasks or subtasks with this tag.</div>`}
+          ${renderCollapsibleCompleted(completed.map(x => x.type === 'task' ? renderTaskCard(x.task) : renderSubtaskCard(x.task, x.subtask)).join(''), completed.length)}
+        </div>`;
+    }
+
+    /********************************************************************
+     * 10. CALENDAR VIEW
+     ********************************************************************/
+    function shiftCalendarMonth(delta) {
+      uiState.calendarDate = new Date(uiState.calendarDate.getFullYear(), uiState.calendarDate.getMonth() + delta, 1);
+      renderWorkspace();
+    }
+    function resetCalendarToday() { uiState.calendarDate = new Date(); renderWorkspace(); }
+
+    function renderCalendarView(container) {
+      const year = uiState.calendarDate.getFullYear();
+      const month = uiState.calendarDate.getMonth();
+      const monthLabel = uiState.calendarDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const todayStr = getLocalDateStr();
+
+      const itemsByDate = {};
+      appState.tasks.forEach(t => {
+        if (t.dueDate) {
+          if (!itemsByDate[t.dueDate]) itemsByDate[t.dueDate] = [];
+          itemsByDate[t.dueDate].push({ type: 'task', task: t, title: t.title, color: getProjectById(t.projectId).color, completed: t.completed });
+        }
+        (t.subtasks || []).forEach(st => {
+          if (st.dueDate) {
+            if (!itemsByDate[st.dueDate]) itemsByDate[st.dueDate] = [];
+            itemsByDate[st.dueDate].push({ type: 'subtask', task: t, subtask: st, title: `↳ ${st.recurrence ? '↻ ' : ''}${st.title}`, color: getProjectById(t.projectId).color, completed: st.completed });
+          }
+        });
+      });
+
+      let cells = '';
+      for (let i = 0; i < firstDay; i++) cells += `<div class="min-h-[96px] bg-slate-50/50 dark:bg-slate-900/30 border-b border-r border-slate-200/70 dark:border-slate-800"></div>`;
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const dayItems = itemsByDate[dStr] || [];
+        const isToday = dStr === todayStr;
+        cells += `
+          <div onclick="openQuickAddModal('${dStr}')" class="min-h-[96px] p-1.5 bg-white dark:bg-slate-900 border-b border-r border-slate-200/70 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer transition-colors flex flex-col gap-1">
+            <div class="flex justify-between items-center">
+              <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${isToday ? 'bg-red-600 text-white' : 'text-slate-600 dark:text-slate-400'}">${day}</span>
+            </div>
+            <div class="space-y-1 overflow-y-auto max-h-24">
+              ${dayItems.map(it => `
+                <div onclick="event.stopPropagation(); openTaskDetail('${it.task.id}', ${it.subtask ? `'${it.subtask.id}'` : 'null'})" class="px-1.5 py-0.5 rounded text-[11px] font-medium truncate ${it.completed ? 'line-through opacity-50' : ''}" style="background:${it.color}20; color:${it.color}; border-left: 2px solid ${it.color};">
+                  ${escapeHtml(it.title)}
+                </div>`).join('')}
+            </div>
+          </div>`;
+      }
+
+      container.innerHTML = `
+        <div class="max-w-6xl mx-auto space-y-4 animate-fade-in">
+          <div class="flex items-center justify-between">
+            <h3 class="text-lg font-bold">${monthLabel}</h3>
+            <div class="flex items-center gap-1.5">
+              <button onclick="shiftCalendarMonth(-1)" class="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+              <button onclick="resetCalendarToday()" class="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-semibold">Today</button>
+              <button onclick="shiftCalendarMonth(1)" class="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+            </div>
+          </div>
+          <div class="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-xs">
+            <div class="grid grid-cols-7 bg-slate-100 dark:bg-slate-800/80 text-center text-[11px] font-bold uppercase tracking-wider text-slate-500 py-2">
+              <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+            </div>
+            <div class="grid grid-cols-7">${cells}</div>
+          </div>
+        </div>`;
+    }
+
+    /********************************************************************
+     * 11. TIME ANALYTICS VIEW (CHART.JS + HIERARCHICAL BREAKDOWN)
+     ********************************************************************/
+    function destroyCharts() {
+      Object.keys(charts).forEach(k => { if (charts[k]) { charts[k].destroy(); charts[k] = null; } });
+    }
+
+    function renderAnalyticsView(container) {
+      destroyCharts();
+      const range = uiState.analyticsRange;
+
+      let totalSecs = 0;
+      const projMap = {};
+      const tagMap = {};
+
+      appState.tasks.forEach(t => {
+        const p = getProjectById(t.projectId);
+        const directSecs = getItemSeconds(t, range);
+        totalSecs += directSecs;
+        if (!projMap[p.id]) projMap[p.id] = { name: p.name, color: p.color, seconds: 0 };
+        projMap[p.id].seconds += directSecs;
+
+        (t.tagIds || []).forEach(tid => {
+          const tg = getTagById(tid);
+          if (tg && directSecs > 0) {
+            if (!tagMap[tid]) tagMap[tid] = { name: tg.name, color: tg.color, seconds: 0 };
+            tagMap[tid].seconds += directSecs;
+          }
+        });
+
+        (t.subtasks || []).forEach(st => {
+          const stSecs = getItemSeconds(st, range);
+          totalSecs += stSecs;
+          projMap[p.id].seconds += stSecs;
+          (st.tagIds || []).forEach(tid => {
+            const tg = getTagById(tid);
+            if (tg && stSecs > 0) {
+              if (!tagMap[tid]) tagMap[tid] = { name: tg.name, color: tg.color, seconds: 0 };
+              tagMap[tid].seconds += stSecs;
+            }
+          });
+        });
+      });
+
+      const projRows = Object.values(projMap).filter(x => x.seconds > 0).sort((a, b) => b.seconds - a.seconds);
+      const tagRows = Object.values(tagMap).filter(x => x.seconds > 0).sort((a, b) => b.seconds - a.seconds);
+      const completedCount = appState.tasks.filter(t => t.completed).length;
+      const activeCount = appState.tasks.filter(t => !t.completed).length;
+      const topProj = projRows[0] ? `${projRows[0].name} (${formatDuration(projRows[0].seconds)})` : '—';
+      const topTag = tagRows[0] ? `Tag: ${tagRows[0].name}` : 'No tags logged';
+
+      // Breakdown table rows
+      let tableTasks = appState.tasks.map(t => {
+        const direct = getItemSeconds(t, range);
+        const subTotal = (t.subtasks || []).reduce((s, st) => s + getItemSeconds(st, range), 0);
+        return { task: t, proj: getProjectById(t.projectId), direct, subTotal, total: direct + subTotal };
+      });
+      if (uiState.taskChartProject !== 'all') tableTasks = tableTasks.filter(r => r.task.projectId === uiState.taskChartProject);
+      if (uiState.breakdownSearch.trim()) {
+        const q = uiState.breakdownSearch.toLowerCase();
+        tableTasks = tableTasks.filter(r => r.task.title.toLowerCase().includes(q) || (r.task.subtasks || []).some(st => st.title.toLowerCase().includes(q)));
+      }
+      if (uiState.breakdownSort === 'time') tableTasks.sort((a, b) => b.total - a.total);
+      else if (uiState.breakdownSort === 'title') tableTasks.sort((a, b) => a.task.title.localeCompare(b.task.title));
+      else tableTasks.sort((a, b) => (a.task.dueDate || '9999').localeCompare(b.task.dueDate || '9999'));
+
+      container.innerHTML = `
+        <div class="max-w-6xl mx-auto space-y-6 animate-fade-in">
+          <!-- Filter Bar -->
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <p class="text-xs text-slate-500">Includes logged time from both tasks and subtasks.</p>
+            <div class="inline-flex p-1 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-semibold">
+              ${['all', 'month', 'week'].map(r => `<button onclick="uiState.analyticsRange='${r}'; renderWorkspace();" class="px-3 py-1.5 rounded-lg transition-colors ${range === r ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'text-slate-500 hover:text-slate-800'}">${r === 'all' ? 'All Time' : (r === 'month' ? 'This Month' : 'This Week')}</button>`).join('')}
+            </div>
+          </div>
+
+          <!-- Single Clean Row of 4 KPI Cards -->
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+              <p class="text-xs font-medium text-slate-500">Total Time Tracked</p>
+              <p class="text-2xl font-extrabold mt-1">${formatDuration(totalSecs)}</p>
+            </div>
+            <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+              <p class="text-xs font-medium text-slate-500">Tasks Completed</p>
+              <p class="text-2xl font-extrabold mt-1 text-emerald-600 dark:text-emerald-400">${completedCount}</p>
+            </div>
+            <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+              <p class="text-xs font-medium text-slate-500">Active Tasks</p>
+              <p class="text-2xl font-extrabold mt-1">${activeCount}</p>
+            </div>
+            <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+              <p class="text-xs font-medium text-slate-500">Top Project / Tag</p>
+              <p class="text-base font-bold mt-1 truncate">${escapeHtml(topProj)}</p>
+              <p class="text-[11px] text-slate-400 truncate">${escapeHtml(topTag)}</p>
+            </div>
+          </div>
+
+          <!-- Project & Tag Charts -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="font-bold text-sm">Time Spent by Project</h3>
+                <div class="inline-flex p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-[11px] font-semibold">
+                  <button onclick="uiState.projectChartType='doughnut'; renderWorkspace();" class="px-2.5 py-1 rounded-md ${uiState.projectChartType === 'doughnut' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'text-slate-500'}">Pie</button>
+                  <button onclick="uiState.projectChartType='bar'; renderWorkspace();" class="px-2.5 py-1 rounded-md ${uiState.projectChartType === 'bar' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'text-slate-500'}">Bar</button>
+                </div>
+              </div>
+              <div class="h-60 flex items-center justify-center">
+                ${projRows.length ? '<canvas id="chart-project"></canvas>' : '<p class="text-xs text-slate-400">No time logged yet. Start a timer or log minutes on any task.</p>'}
+              </div>
+            </div>
+
+            <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="font-bold text-sm">Time Spent by Tag</h3>
+                <div class="inline-flex p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-[11px] font-semibold">
+                  <button onclick="uiState.tagChartType='bar'; renderWorkspace();" class="px-2.5 py-1 rounded-md ${uiState.tagChartType === 'bar' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'text-slate-500'}">Bar</button>
+                  <button onclick="uiState.tagChartType='doughnut'; renderWorkspace();" class="px-2.5 py-1 rounded-md ${uiState.tagChartType === 'doughnut' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'text-slate-500'}">Pie</button>
+                </div>
+              </div>
+              <div class="h-60 flex items-center justify-center">
+                ${tagRows.length ? '<canvas id="chart-tag"></canvas>' : '<p class="text-xs text-slate-400">No tagged time logged yet.</p>'}
+              </div>
+            </div>
+          </div>
+
+          <!-- Full-Width Task & Subtask Chart -->
+          <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <h3 class="font-bold text-sm">Time Spent by Task & Subtask</h3>
+              <div class="flex flex-wrap items-center gap-2">
+                <div class="inline-flex p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-[11px] font-semibold">
+                  ${[['rollup', 'Tasks (Rollup)'], ['items', 'All Items'], ['subtasks', 'Subtasks Only']].map(([k, lbl]) => `<button onclick="uiState.taskChartScope='${k}'; renderWorkspace();" class="px-2.5 py-1 rounded-md ${uiState.taskChartScope === k ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'text-slate-500'}">${lbl}</button>`).join('')}
+                </div>
+                <select onchange="uiState.taskChartProject=this.value; renderWorkspace();" class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-medium">
+                  <option value="all">All Projects</option>
+                  ${appState.projects.map(p => `<option value="${p.id}" ${uiState.taskChartProject === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
+                </select>
+                <div class="inline-flex p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-[11px] font-semibold">
+                  <button onclick="uiState.taskChartType='bar'; renderWorkspace();" class="px-2.5 py-1 rounded-md ${uiState.taskChartType === 'bar' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'text-slate-500'}">Bar</button>
+                  <button onclick="uiState.taskChartType='doughnut'; renderWorkspace();" class="px-2.5 py-1 rounded-md ${uiState.taskChartType === 'doughnut' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'text-slate-500'}">Pie</button>
+                </div>
+              </div>
+            </div>
+            <div class="h-64 flex items-center justify-center">
+              <canvas id="chart-task"></canvas>
+            </div>
+          </div>
+
+          <!-- Hierarchical Task & Subtask Breakdown Table -->
+          <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <h3 class="font-bold text-sm">Task & Subtask Breakdown</h3>
+              <div class="flex items-center gap-2">
+                <input type="text" value="${escapeHtml(uiState.breakdownSearch)}" oninput="uiState.breakdownSearch=this.value; renderWorkspace();" placeholder="Filter tasks..." class="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs" />
+                <select onchange="uiState.breakdownSort=this.value; renderWorkspace();" class="px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
+                  <option value="time" ${uiState.breakdownSort === 'time' ? 'selected' : ''}>Most Time</option>
+                  <option value="title" ${uiState.breakdownSort === 'title' ? 'selected' : ''}>Title A–Z</option>
+                  <option value="due" ${uiState.breakdownSort === 'due' ? 'selected' : ''}>Due Date</option>
+                </select>
+              </div>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead>
+                  <tr class="border-b border-slate-100 dark:border-slate-800 text-slate-400 uppercase text-[11px]">
+                    <th class="py-2 pr-3">Task / Subtask</th>
+                    <th class="py-2 px-3">Direct</th>
+                    <th class="py-2 px-3">Subtasks</th>
+                    <th class="py-2 px-3">Total</th>
+                    <th class="py-2 pl-3 w-32">Share</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                  ${tableTasks.length ? tableTasks.map(r => {
+                    const share = totalSecs > 0 ? Math.round((r.total / totalSecs) * 100) : 0;
+                    const subs = r.task.subtasks || [];
+                    const exp = !!uiState.breakdownExpanded[r.task.id];
+                    return `
+                      <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer" onclick="openTaskDetail('${r.task.id}')">
+                        <td class="py-2.5 pr-3 font-semibold">
+                          <div class="flex items-center gap-2">
+                            ${subs.length ? `<button onclick="event.stopPropagation(); uiState.breakdownExpanded['${r.task.id}']=!uiState.breakdownExpanded['${r.task.id}']; renderWorkspace();" class="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700"><i data-lucide="${exp ? 'chevron-down' : 'chevron-right'}" class="w-3.5 h-3.5"></i></button>` : '<span class="w-4"></span>'}
+                            <span class="w-2 h-2 rounded-full shrink-0" style="background:${r.proj.color}"></span>
+                            <span>${escapeHtml(r.task.title)}</span>
+                          </div>
+                        </td>
+                        <td class="py-2.5 px-3 text-slate-500">${formatDuration(r.direct)}</td>
+                        <td class="py-2.5 px-3 text-slate-500">${formatDuration(r.subTotal)}</td>
+                        <td class="py-2.5 px-3 font-bold">${formatDuration(r.total)}</td>
+                        <td class="py-2.5 pl-3">
+                          <div class="flex items-center gap-2">
+                            <div class="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden"><div class="h-full rounded-full" style="width:${share}%; background:${r.proj.color}"></div></div>
+                            <span class="w-8 text-right text-slate-500">${share}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                      ${exp ? subs.map(st => {
+                        const stS = getItemSeconds(st, range);
+                        const stShare = totalSecs > 0 ? Math.round((stS / totalSecs) * 100) : 0;
+                        return `
+                          <tr class="bg-slate-50/60 dark:bg-slate-800/20 hover:bg-slate-100/70 dark:hover:bg-slate-800/50 cursor-pointer" onclick="openTaskDetail('${r.task.id}', '${st.id}')">
+                            <td class="py-2 pl-10 pr-3 text-slate-600 dark:text-slate-300">↳ ${escapeHtml(st.title)}</td>
+                            <td class="py-2 px-3 text-slate-500">${formatDuration(stS)}</td>
+                            <td class="py-2 px-3 text-slate-400">—</td>
+                            <td class="py-2 px-3 font-semibold">${formatDuration(stS)}</td>
+                            <td class="py-2 pl-3 text-right text-slate-400">${stShare}%</td>
+                          </tr>`;
+                      }).join('') : ''}`;
+                  }).join('') : `<tr><td colspan="5" class="py-8 text-center text-slate-400">No tasks to display yet.</td></tr>`}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>`;
+
+      // Render Chart.js instances
+      const isDark = appState.settings.theme === 'dark';
+      const tickColor = isDark ? '#94a3b8' : '#64748b';
+      const gridColor = isDark ? 'rgba(148,163,184,0.1)' : 'rgba(148,163,184,0.18)';
+
+      if (projRows.length) {
+        charts.project = new Chart(document.getElementById('chart-project'), {
+          type: uiState.projectChartType,
+          data: {
+            labels: projRows.map(r => r.name),
+            datasets: [{ data: projRows.map(r => +(r.seconds / 60).toFixed(1)), backgroundColor: projRows.map(r => r.color), borderWidth: 0 }]
+          },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: uiState.projectChartType === 'doughnut', position: 'right', labels: { color: tickColor } } }, scales: uiState.projectChartType === 'bar' ? { x: { ticks: { color: tickColor }, grid: { display: false } }, y: { ticks: { color: tickColor }, grid: { color: gridColor } } } : {} }
+        });
+      }
+
+      if (tagRows.length) {
+        charts.tag = new Chart(document.getElementById('chart-tag'), {
+          type: uiState.tagChartType,
+          data: {
+            labels: tagRows.map(r => r.name),
+            datasets: [{ data: tagRows.map(r => +(r.seconds / 60).toFixed(1)), backgroundColor: tagRows.map(r => r.color), borderWidth: 0, borderRadius: 6 }]
+          },
+          options: { indexAxis: uiState.tagChartType === 'bar' ? 'y' : 'x', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: uiState.tagChartType === 'doughnut', position: 'right', labels: { color: tickColor } } }, scales: uiState.tagChartType === 'bar' ? { x: { ticks: { color: tickColor }, grid: { color: gridColor } }, y: { ticks: { color: tickColor }, grid: { display: false } } } : {} }
+        });
+      }
+
+      // Build Task/Subtask chart dataset
+      const taskChartItems = [];
+      const filteredTasks = uiState.taskChartProject === 'all' ? appState.tasks : appState.tasks.filter(t => t.projectId === uiState.taskChartProject);
+      filteredTasks.forEach(t => {
+        const p = getProjectById(t.projectId);
+        if (uiState.taskChartScope === 'rollup') {
+          const secs = getTaskTotalSeconds(t, range);
+          if (secs > 0) taskChartItems.push({ label: t.title, mins: +(secs / 60).toFixed(1), color: p.color });
+        } else if (uiState.taskChartScope === 'items') {
+          const dSecs = getItemSeconds(t, range);
+          if (dSecs > 0) taskChartItems.push({ label: t.title, mins: +(dSecs / 60).toFixed(1), color: p.color });
+          (t.subtasks || []).forEach(st => {
+            const sSecs = getItemSeconds(st, range);
+            if (sSecs > 0) taskChartItems.push({ label: `↳ ${st.title}`, mins: +(sSecs / 60).toFixed(1), color: p.color });
+          });
+        } else {
+          (t.subtasks || []).forEach(st => {
+            const sSecs = getItemSeconds(st, range);
+            if (sSecs > 0) taskChartItems.push({ label: `↳ ${st.title}`, mins: +(sSecs / 60).toFixed(1), color: p.color });
+          });
+        }
+      });
+      taskChartItems.sort((a, b) => b.mins - a.mins);
+
+      const taskCanvas = document.getElementById('chart-task');
+      if (taskChartItems.length && taskCanvas) {
+        charts.task = new Chart(taskCanvas, {
+          type: uiState.taskChartType,
+          data: {
+            labels: taskChartItems.slice(0, 12).map(x => x.label),
+            datasets: [{ label: 'Minutes', data: taskChartItems.slice(0, 12).map(x => x.mins), backgroundColor: taskChartItems.slice(0, 12).map(x => x.color), borderRadius: 6, borderWidth: 0 }]
+          },
+          options: { indexAxis: uiState.taskChartType === 'bar' ? 'y' : 'x', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: uiState.taskChartType === 'doughnut', position: 'right', labels: { color: tickColor } } }, scales: uiState.taskChartType === 'bar' ? { x: { ticks: { color: tickColor }, grid: { color: gridColor } }, y: { ticks: { color: tickColor }, grid: { display: false } } } : {} }
+        });
+      } else if (taskCanvas) {
+        taskCanvas.parentElement.innerHTML = `<p class="text-xs text-slate-400">No logged time for this scope yet.</p>`;
+      }
+    }
+
+    /********************************************************************
+     * 12. STREAKS VIEW
+     ********************************************************************/
+    function renderStreaksView(container) {
+      const stats = calculateStreakStats();
+      const prog = getTodayProgress();
+      const today = getLocalDateStr();
+      const pct = prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0;
+
+      // 12-week (84-day) heatmap
+      const cells = [];
+      for (let i = 83; i >= 0; i--) {
+        const dStr = addDaysStr(today, -i);
+        const rec = appState.streakHistory[dStr];
+        let cls = 'bg-slate-100 dark:bg-slate-800';
+        let tip = `${dStr}: No tasks`;
+        if (rec) {
+          if (rec.perfect) { cls = 'bg-emerald-500'; tip = `${dStr}: Perfect Day (${rec.done}/${rec.total})`; }
+          else if (rec.done > 0) { cls = 'bg-amber-400'; tip = `${dStr}: Partial (${rec.done}/${rec.total})`; }
+          else { cls = 'bg-rose-200 dark:bg-rose-900/60'; tip = `${dStr}: 0/${rec.total} done`; }
+        }
+        cells.push(`<div title="${tip}" class="aspect-square rounded-md ${cls} transition-transform hover:scale-125"></div>`);
+      }
+
+      container.innerHTML = `
+        <div class="max-w-5xl mx-auto space-y-6 animate-fade-in">
+          <!-- Hero Banner -->
+          <div class="p-6 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white shadow-lg">
+            <div class="flex flex-wrap items-center justify-between gap-6">
+              <div class="flex items-center gap-4">
+                <div class="w-16 h-16 rounded-2xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center flame-glow">
+                  <i data-lucide="flame" class="w-9 h-9 text-orange-400"></i>
+                </div>
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-wider text-orange-300">Current Streak</p>
+                  <p class="text-4xl font-extrabold">${stats.currentStreak} <span class="text-lg font-semibold text-slate-300">Days</span></p>
+                </div>
+              </div>
+              <div class="flex items-center gap-6">
+                <div><p class="text-xs text-slate-400">Best Streak</p><p class="text-2xl font-bold">${stats.bestStreak}d</p></div>
+                <div><p class="text-xs text-slate-400">Perfect Days</p><p class="text-2xl font-bold text-emerald-400">${stats.totalPerfectDays}</p></div>
+                ${prog.isPerfect ? `<button onclick="openCelebrationModal()" class="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold shadow-md">Replay Celebration 🎉</button>` : ''}
+              </div>
+            </div>
+            <div class="mt-5 pt-4 border-t border-white/10">
+              <div class="flex justify-between text-xs mb-1.5 text-slate-300">
+                <span>Today's Progress (${prog.done}/${prog.total})</span>
+                <span>${pct}%</span>
+              </div>
+              <div class="h-2 rounded-full bg-white/10 overflow-hidden">
+                <div class="h-full rounded-full bg-gradient-to-r from-amber-400 to-emerald-400" style="width:${pct}%"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 12-Week Heatmap -->
+          <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="font-bold text-sm">12-Week Consistency Heatmap</h3>
+              <div class="flex items-center gap-3 text-[11px] text-slate-400">
+                <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-slate-100 dark:bg-slate-800 inline-block"></span> Empty</span>
+                <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-amber-400 inline-block"></span> Partial</span>
+                <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-emerald-500 inline-block"></span> Perfect</span>
+              </div>
+            </div>
+            <div class="grid grid-cols-12 sm:grid-cols-14 md:grid-cols-21 gap-1.5">${cells.join('')}</div>
+          </div>
+
+          <!-- Milestones -->
+          <div>
+            <h3 class="font-bold text-sm mb-3">Streak Milestones</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              ${STREAK_MILESTONES.map(m => {
+                const unlocked = stats.bestStreak >= m.days;
+                return `
+                  <div class="p-4 rounded-2xl border transition-all ${unlocked ? 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-xs' : 'bg-slate-50/70 dark:bg-slate-900/40 border-slate-200/50 dark:border-slate-800/50 opacity-55'}">
+                    <div class="flex items-center justify-between">
+                      <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:${m.color}20; color:${m.color};"><i data-lucide="${m.icon}" class="w-4.5 h-4.5"></i></div>
+                      <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${unlocked ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}">${unlocked ? 'Unlocked' : `${m.days}d`}</span>
+                    </div>
+                    <h4 class="font-bold text-sm mt-3">${m.title}</h4>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">${m.desc}</p>
+                  </div>`;
+              }).join('')}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    /********************************************************************
+     * 13. TASK DETAIL DRAWER (EDIT, MANUAL TIME LOG, RECURRING SUBTASKS)
+     ********************************************************************/
+    function openTaskDetail(taskId, highlightSubtaskId = null) {
+      uiState.detailTaskId = taskId;
+      uiState.highlightSubtaskId = highlightSubtaskId;
+      renderTaskDetail();
+      document.getElementById('task-detail-backdrop').classList.remove('hidden');
+      document.getElementById('task-detail-drawer').classList.remove('translate-x-full');
+      lucide.createIcons();
+      if (highlightSubtaskId) {
+        setTimeout(() => {
+          const el = document.getElementById(`subtask-row-${highlightSubtaskId}`);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 120);
+      }
+    }
+
+    function closeTaskDetail() {
+      uiState.detailTaskId = null;
+      uiState.highlightSubtaskId = null;
+      document.getElementById('task-detail-backdrop').classList.add('hidden');
+      document.getElementById('task-detail-drawer').classList.add('translate-x-full');
+    }
+
+    function updateTaskField(taskId, field, value) {
+      const task = appState.tasks.find(t => t.id === taskId);
+      if (!task) return;
+      task[field] = value;
+      evaluateTodayStreak(false);
+      saveState();
+      renderSidebar();
+      renderWorkspace();
+    }
+
+    function toggleTaskTag(taskId, tagId) {
+      const task = appState.tasks.find(t => t.id === taskId);
+      if (!task) return;
+      if (!task.tagIds) task.tagIds = [];
+      if (task.tagIds.includes(tagId)) task.tagIds = task.tagIds.filter(id => id !== tagId);
+      else task.tagIds.push(tagId);
+      saveState();
+      renderTaskDetail();
+      renderWorkspace();
+    }
+
+    function logManualTime(taskId, subtaskId = null) {
+      const hEl = document.getElementById(subtaskId ? `st-hrs-${subtaskId}` : 'td-log-hrs');
+      const mEl = document.getElementById(subtaskId ? `st-mins-${subtaskId}` : 'td-log-mins');
+      const secs = (Number(hEl?.value || 0) * 3600) + (Number(mEl?.value || 0) * 60);
+      if (secs <= 0) { showToast('Enter hours or minutes to log.', 'error'); return; }
+      const task = appState.tasks.find(t => t.id === taskId);
+      const target = subtaskId ? (task?.subtasks || []).find(s => s.id === subtaskId) : task;
+      if (!target) return;
+      if (!target.timeLogs) target.timeLogs = [];
+      target.timeLogs.push({ date: getLocalDateStr(), seconds: secs });
+      saveState();
+      renderTaskDetail();
+      renderWorkspace();
+      showToast(`Logged ${formatDuration(secs)}`);
+    }
+
+    function addSubtaskFromDrawer(e, taskId) {
+      e.preventDefault();
+      const task = appState.tasks.find(t => t.id === taskId);
+      if (!task) return;
+      const title = document.getElementById('new-st-title').value.trim();
+      if (!title) return;
+      const dueDate = document.getElementById('new-st-due').value || '';
+      const freq = document.getElementById('new-st-freq').value;
+      const endDate = document.getElementById('new-st-end').value || '';
+
+      let recurrence = null;
+      let effectiveDue = dueDate;
+      if (freq !== 'none') {
+        effectiveDue = dueDate || getLocalDateStr();
+        recurrence = { freq, startDate: effectiveDue, endDate, seriesId: uid('ser'), spawnedNext: false };
+      }
+
+      if (!task.subtasks) task.subtasks = [];
+      task.subtasks.push({
+        id: uid('st'),
+        title,
+        dueDate: effectiveDue,
+        tagIds: [],
+        timeLogs: [],
+        completed: false,
+        completedAt: null,
+        recurrence
+      });
+
+      evaluateTodayStreak(false);
+      saveState();
+      renderAll();
+      renderTaskDetail();
+      showToast(recurrence ? `Recurring (${freq}) subtask added` : 'Subtask added');
+    }
+
+    function updateSubtaskField(taskId, subtaskId, field, value) {
+      const task = appState.tasks.find(t => t.id === taskId);
+      const st = (task?.subtasks || []).find(s => s.id === subtaskId);
+      if (!st) return;
+      st[field] = value;
+      evaluateTodayStreak(false);
+      saveState();
+      renderSidebar();
+      renderWorkspace();
+    }
+
+    function toggleSubtaskTag(taskId, subtaskId, tagId) {
+      const task = appState.tasks.find(t => t.id === taskId);
+      const st = (task?.subtasks || []).find(s => s.id === subtaskId);
+      if (!st) return;
+      if (!st.tagIds) st.tagIds = [];
+      if (st.tagIds.includes(tagId)) st.tagIds = st.tagIds.filter(id => id !== tagId);
+      else st.tagIds.push(tagId);
+      saveState();
+      renderTaskDetail();
+      renderWorkspace();
+    }
+
+    function renderTaskDetail() {
+      const container = document.getElementById('task-detail-content');
+      const task = appState.tasks.find(t => t.id === uiState.detailTaskId);
+      if (!task) { container.innerHTML = ''; return; }
+
+      const running = isTimerRunningFor(task.id, null);
+      const directSecs = getItemSeconds(task);
+      const totalSecs = getTaskTotalSeconds(task);
+
+      container.innerHTML = `
+        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
+          <div class="flex items-center gap-2">
+            <button onclick="toggleTaskComplete('${task.id}')" class="w-5 h-5 rounded-full border-2 flex items-center justify-center ${task.completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 dark:border-slate-600'}">
+              ${task.completed ? '<i data-lucide="check" class="w-3 h-3"></i>' : ''}
+            </button>
+            <span class="text-xs font-semibold text-slate-400">Task Details</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <button onclick="deleteTask('${task.id}')" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+            <button onclick="closeTaskDetail()" class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-5 space-y-5">
+          <!-- Title & Description -->
+          <div class="space-y-2">
+            <input type="text" value="${escapeHtml(task.title)}" onchange="updateTaskField('${task.id}', 'title', this.value)" class="w-full text-lg font-bold bg-transparent border-b border-transparent focus:border-red-500 focus:outline-none pb-1" />
+            <textarea rows="2" onchange="updateTaskField('${task.id}', 'description', this.value)" placeholder="Add notes or description..." class="w-full text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-red-500/30">${escapeHtml(task.description || '')}</textarea>
+          </div>
+
+          <!-- Meta Grid -->
+          <div class="grid grid-cols-3 gap-2.5">
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Project</label>
+              <select onchange="updateTaskField('${task.id}', 'projectId', this.value)" class="w-full px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium">
+                ${appState.projects.map(p => `<option value="${p.id}" ${task.projectId === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Due Date</label>
+              <input type="date" value="${task.dueDate || ''}" onchange="updateTaskField('${task.id}', 'dueDate', this.value)" class="w-full px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium" />
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Priority</label>
+              <select onchange="updateTaskField('${task.id}', 'priority', Number(this.value))" class="w-full px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium">
+                <option value="1" ${task.priority === 1 ? 'selected' : ''}>P1 Urgent</option>
+                <option value="2" ${task.priority === 2 ? 'selected' : ''}>P2 High</option>
+                <option value="3" ${task.priority === 3 ? 'selected' : ''}>P3 Medium</option>
+                <option value="4" ${task.priority === 4 ? 'selected' : ''}>P4 Normal</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Task Tags -->
+          <div>
+            <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1.5">Tags</label>
+            <div class="flex flex-wrap gap-1.5">
+              ${appState.tags.length ? appState.tags.map(t => {
+                const active = (task.tagIds || []).includes(t.id);
+                return `<button onclick="toggleTaskTag('${task.id}', '${t.id}')" class="px-2.5 py-1 rounded-full text-xs font-medium border ${active ? 'text-white border-transparent' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'}" style="${active ? `background:${t.color}` : ''}">${escapeHtml(t.name)}</button>`;
+              }).join('') : '<span class="text-xs text-slate-400">Create tags from the sidebar to label tasks.</span>'}
+            </div>
+          </div>
+
+          <!-- Time Tracking -->
+          <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/70 space-y-3">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-xs font-bold">Time Tracking</p>
+                <p class="text-[11px] text-slate-400">Direct: ${formatDuration(directSecs)} · Total w/ subtasks: ${formatDuration(totalSecs)}</p>
+              </div>
+              <button onclick="toggleTimer('${task.id}')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold ${running ? 'bg-rose-600 text-white' : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900'}">
+                <i data-lucide="${running ? 'square' : 'play'}" class="w-3.5 h-3.5"></i>
+                <span>${running ? 'Stop Timer' : 'Start Timer'}</span>
+              </button>
+            </div>
+            <div class="flex items-center gap-2">
+              <input id="td-log-hrs" type="number" min="0" placeholder="Hrs" class="w-16 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs" />
+              <input id="td-log-mins" type="number" min="0" placeholder="Mins" class="w-16 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs" />
+              <button onclick="logManualTime('${task.id}')" class="px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-xs font-semibold">Log Time</button>
+            </div>
+          </div>
+
+          <!-- Subtasks & Just-in-Time Recurring Creator -->
+          <div class="space-y-3">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400">Subtasks (${(task.subtasks || []).length})</h4>
+
+            <form onsubmit="addSubtaskFromDrawer(event, '${task.id}')" class="p-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 space-y-2.5">
+              <input id="new-st-title" type="text" required placeholder="Add a subtask..." class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-medium" />
+              <div class="grid grid-cols-3 gap-2">
+                <div>
+                  <label class="block text-[10px] text-slate-400 mb-0.5">Due / Start</label>
+                  <input id="new-st-due" type="date" class="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-[11px]" />
+                </div>
+                <div>
+                  <label class="block text-[10px] text-slate-400 mb-0.5">Repeat</label>
+                  <select id="new-st-freq" onchange="document.getElementById('new-st-end-wrap').classList.toggle('hidden', this.value==='none')" class="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-[11px]">
+                    <option value="none">No Repeat</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="yearly">Yearly</option>
+                  </select>
+                </div>
+                <div id="new-st-end-wrap" class="hidden">
+                  <label class="block text-[10px] text-slate-400 mb-0.5">End (Opt.)</label>
+                  <input id="new-st-end" type="date" class="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-[11px]" />
+                </div>
+              </div>
+              <button type="submit" class="w-full py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold">Add Subtask</button>
+            </form>
+
+            <div class="space-y-2">
+              ${(task.subtasks || []).map(st => {
+                const stRun = isTimerRunningFor(task.id, st.id);
+                const stSecs = getItemSeconds(st);
+                const isHl = uiState.highlightSubtaskId === st.id;
+                return `
+                  <div id="subtask-row-${st.id}" class="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2 ${isHl ? 'subtask-highlight' : ''}">
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="flex items-center gap-2 min-w-0 flex-1">
+                        <button onclick="toggleSubtaskComplete('${task.id}', '${st.id}')" class="w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${st.completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 dark:border-slate-600'}">
+                          ${st.completed ? '<i data-lucide="check" class="w-2.5 h-2.5"></i>' : ''}
+                        </button>
+                        <input type="text" value="${escapeHtml(st.title)}" onchange="updateSubtaskField('${task.id}', '${st.id}', 'title', this.value)" class="flex-1 min-w-0 text-xs font-semibold bg-transparent focus:outline-none ${st.completed ? 'line-through text-slate-400' : ''}" />
+                      </div>
+                      <div class="flex items-center gap-1 shrink-0">
+                        <button onclick="toggleTimer('${task.id}', '${st.id}')" class="p-1 rounded ${stRun ? 'bg-rose-100 text-rose-600' : 'text-slate-400 hover:text-slate-700'}"><i data-lucide="${stRun ? 'square' : 'play'}" class="w-3.5 h-3.5"></i></button>
+                        <button onclick="requestDeleteSubtask('${task.id}', '${st.id}')" class="p-1 rounded text-slate-400 hover:text-rose-600"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                      </div>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2 text-[11px]">
+                      <input type="date" value="${st.dueDate || ''}" onchange="updateSubtaskField('${task.id}', '${st.id}', 'dueDate', this.value)" class="px-2 py-0.5 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700" />
+                      ${st.recurrence ? `<span class="px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300 font-semibold">↻ ${st.recurrence.freq}${st.recurrence.endDate ? ` until ${st.recurrence.endDate}` : ''}</span>` : ''}
+                      <span class="text-slate-400">Logged: ${formatDuration(stSecs)}</span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                      <input id="st-hrs-${st.id}" type="number" min="0" placeholder="h" class="w-12 px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px]" />
+                      <input id="st-mins-${st.id}" type="number" min="0" placeholder="m" class="w-12 px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px]" />
+                      <button onclick="logManualTime('${task.id}', '${st.id}')" class="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[11px] font-semibold hover:bg-slate-200">+ Log</button>
+                    </div>
+                    ${appState.tags.length ? `
+                      <div class="flex flex-wrap gap-1 pt-1">
+                        ${appState.tags.map(t => {
+                          const on = (st.tagIds || []).includes(t.id);
+                          return `<button onclick="toggleSubtaskTag('${task.id}', '${st.id}', '${t.id}')" class="px-2 py-0.5 rounded-full text-[10px] font-medium border ${on ? 'text-white border-transparent' : 'border-slate-200 dark:border-slate-700 text-slate-400'}" style="${on ? `background:${t.color}` : ''}">${escapeHtml(t.name)}</button>`;
+                        }).join('')}
+                      </div>` : ''}
+                  </div>`;
+              }).join('')}
+            </div>
+          </div>
+        </div>`;
+      lucide.createIcons();
+    }
+
+    /********************************************************************
+     * 14. THEME, EXPORT/IMPORT, CLEAR & TOASTS
+     ********************************************************************/
+    function applyTheme() {
+      const dark = appState.settings.theme === 'dark';
+      document.documentElement.classList.toggle('dark', dark);
+      const icon = document.getElementById('theme-icon');
+      if (icon) icon.setAttribute('data-lucide', dark ? 'sun' : 'moon');
+      lucide.createIcons();
+    }
+
+    function toggleTheme() {
+      appState.settings.theme = appState.settings.theme === 'dark' ? 'light' : 'dark';
+      applyTheme();
+      saveState();
+      if (uiState.view === 'analytics') renderWorkspace();
+    }
+
+    function exportData() {
+      const blob = new Blob([JSON.stringify(appState, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `taskflow-backup-${getLocalDateStr()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      if (!fsState.fileHandle) { fsState.hasUnsavedChanges = false; renderFileSyncUI(); }
+      showToast('Exported JSON backup');
+    }
+
+    function triggerImport() { document.getElementById('import-file-input').click(); }
+
+    function handleImportFile(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          appState = normalizeLoadedAppState(JSON.parse(reader.result));
+          evaluateTodayStreak(false);
+          saveState(true);
+          applyTheme();
+          closeTaskDetail();
+          renderAll();
+          showToast('Backup imported successfully');
+        } catch (err) {
+          showToast('Invalid JSON backup file.', 'error');
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    }
+
+    function confirmClearAllData() {
+      openConfirmModal('Clear All Data', 'Reset TaskFlow to a completely clean slate? This cannot be undone.', () => {
+        if (uiState.activeTimer) commitActiveTimer(false);
+        appState = createEmptyState();
+        saveState(true);
+        closeTaskDetail();
+        setView('today');
+        showToast('Workspace reset to clean slate', 'info');
+      });
+    }
+
+    function showToast(msg, type = 'success') {
+      const c = document.getElementById('toast-container');
+      const el = document.createElement('div');
+      const colors = type === 'error' ? 'bg-rose-600 text-white' : (type === 'info' ? 'bg-slate-800 text-white' : 'bg-emerald-600 text-white');
+      el.className = `pointer-events-auto px-4 py-2.5 rounded-xl shadow-lg text-xs font-semibold animate-fade-in ${colors}`;
+      el.textContent = msg;
+      c.appendChild(el);
+      setTimeout(() => el.remove(), 3000);
+    }
+
+    function renderAll() {
+      renderSidebar();
+      renderHeader();
+      renderWorkspace();
+      renderFileSyncUI();
+      if (uiState.detailTaskId) renderTaskDetail();
+      lucide.createIcons();
+    }
+
+    /********************************************************************
+     * 15. LIFECYCLE & KEYBOARD SHORTCUTS
+     ********************************************************************/
+    window.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden' && fsState.fileHandle && (fsState.saveTimerId || fsState.hasUnsavedChanges)) {
+        scheduleFileAutoSave(true);
+      }
+    });
+
+    window.addEventListener('beforeunload', (e) => {
+      if (uiState.activeTimer) commitActiveTimer(false);
+      if (fsState.fileHandle && (fsState.saveTimerId || fsState.hasUnsavedChanges)) {
+        scheduleFileAutoSave(true);
+      } else if (!fsState.fileHandle && fsState.hasUnsavedChanges) {
+        const hasData = appState.tasks.length > 0 || appState.projects.length > 1 || appState.tags.length > 0;
+        if (hasData) { e.preventDefault(); e.returnValue = ''; }
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeQuickAddModal();
+        closeProjectModal();
+        closeTagModal();
+        closeConfirmModal();
+        closeRecurringDeleteModal();
+        closeCelebrationModal();
+        closeFileSyncModal();
+        closeTaskDetail();
+      }
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      loadState();
+      evaluateTodayStreak(false);
+      applyTheme();
+      renderAll();
+      updateGlobalTimerPill();
+      initFileSystemPersistence();
+    });
+  </script>
+</body>
+</html>
